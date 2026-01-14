@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { reader, currentWordIndex, currentPage, isPlaying } from '../stores/reader';
-	import { documentStore, totalPages } from '../stores/document';
-	import { currentTheme } from '../stores/settings';
+	import { documentStore, totalPages, getPdfDocumentCache } from '../stores/document';
+	import { currentTheme, settings } from '../stores/settings';
 	import type { ParsedEpubWithContent, ChapterContent } from '../utils/epub-parser';
 	import type { ParsedDocument } from '../utils/text-parser';
+	import type { ParsedPdf } from '../utils/pdf-parser';
 	import { getHiddenImages, hideImage, showAllImages } from '../utils/storage';
 
 	// Reactive state
@@ -13,6 +14,15 @@
 	const doc = $derived($documentStore);
 	const theme = $derived($currentTheme);
 	const playing = $derived($isPlaying);
+	const pdfPreviewMode = $derived($settings.pdfPreviewMode);
+	const isPdf = $derived(doc.fileType === 'pdf');
+
+	// Canvas ref for rendered PDF mode
+	let pdfCanvas: HTMLCanvasElement | undefined = $state();
+	let pdfContainerRef: HTMLDivElement | undefined = $state();
+	let pdfRenderScale = $state(1.5); // Render at higher res for quality
+	let pdfTextLayerScale = $state(1); // Scale factor for text layer
+
 
 	// Hidden images state
 	let hiddenImages = $state<string[]>([]);
@@ -67,14 +77,14 @@
 		wordSpans.forEach(span => {
 			const idx = parseInt(span.getAttribute('data-word-index') || '', 10);
 			if (isNaN(idx) || idx < pageStart || idx > pageEnd) {
-				// Hide words outside current page
+				// Hide elements outside current page (words and images)
 				(span as HTMLElement).style.display = 'none';
 			}
 		});
 
 		// Hide images that user has marked as hidden
-		const images = htmlDoc.querySelectorAll('img[data-original-src]');
-		images.forEach(img => {
+		const hiddenCheckImages = htmlDoc.querySelectorAll('img[data-original-src]');
+		hiddenCheckImages.forEach(img => {
 			const originalSrc = img.getAttribute('data-original-src');
 			if (originalSrc && hiddenImages.includes(originalSrc)) {
 				(img as HTMLElement).style.display = 'none';
@@ -131,8 +141,23 @@
 		return sortedParas.map(([_, wordList]) => `<p>${wordList.join(' ')}</p>`).join('\n');
 	});
 
+	// For PDF: Get current page's HTML from pageContents
+	const pdfPageHtml = $derived.by((): string | null => {
+		if (!doc.document || doc.fileType !== 'pdf' || !pageBounds) return null;
+
+		const pdfDoc = doc.document as ParsedPdf;
+		if (!pdfDoc.pageContents) return null;
+
+		// Find page content for current page
+		const pageContent = pdfDoc.pageContents.find(
+			p => wordIndex >= p.wordRange[0] && wordIndex <= p.wordRange[1]
+		);
+
+		return pageContent?.htmlWithMarkers || null;
+	});
+
 	// Combined preview HTML
-	const pagePreviewHtml = $derived(epubPageHtml || textPageHtml);
+	const pagePreviewHtml = $derived(epubPageHtml || pdfPageHtml || textPageHtml);
 
 	// Escape HTML special characters
 	function escapeHtml(text: string): string {
@@ -229,6 +254,165 @@
 		contextMenu = null;
 	}
 
+	// Toggle PDF preview mode
+	function togglePdfMode() {
+		settings.togglePdfPreviewMode();
+	}
+
+	// Reference to text layer container
+	let textLayerRef: HTMLDivElement | undefined = $state();
+
+	// Render PDF page to canvas when in rendered mode
+	$effect(() => {
+		if (!isPdf || pdfPreviewMode !== 'rendered' || !pdfCanvas) return;
+
+		const fileKey = doc.fileKey;
+		if (!fileKey) return;
+
+		// Get the actual page number (1-indexed for pdf.js)
+		const pdfPageNum = pageIndex + 1;
+
+		// Get cached PDF document
+		const cachedPdf = getPdfDocumentCache(fileKey);
+		if (!cachedPdf) return;
+
+		// Get word index range for this page from parsed document
+		const pdfDoc = doc.document as ParsedPdf;
+		const pageStarts = pdfDoc?.pageStarts || [];
+		const pageStartWordIndex = pageStarts[pageIndex] ?? 0;
+
+		// Render the page and build text layer
+		(async () => {
+			try {
+				const page = await cachedPdf.getPage(pdfPageNum);
+				const viewport = page.getViewport({ scale: pdfRenderScale });
+
+				pdfCanvas.width = viewport.width;
+				pdfCanvas.height = viewport.height;
+
+				const ctx = pdfCanvas.getContext('2d');
+				if (ctx) {
+					await page.render({
+						canvasContext: ctx,
+						viewport
+					}).promise;
+				}
+
+				// Build text overlay manually with correct positioning
+				const textContent = await page.getTextContent();
+
+				if (textLayerRef) {
+					// Clear previous content and set dimensions to match canvas
+					textLayerRef.innerHTML = '';
+
+					// Store canvas dimensions for scaling
+					const canvasWidth = viewport.width;
+					const canvasHeight = viewport.height;
+
+					let wordCounter = 0;
+
+					for (const item of textContent.items) {
+						if (!('str' in item) || !item.str.trim()) continue;
+
+						const str = item.str;
+						const tx = item.transform;
+
+						// Get font height from transform matrix
+						const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+						const scaledHeight = fontHeight * viewport.scale;
+
+						// Convert PDF coordinates (origin bottom-left) to screen (origin top-left)
+						// tx[4] = x position, tx[5] = y position from bottom
+						const x = tx[4] * viewport.scale;
+						const y = viewport.height - (tx[5] * viewport.scale) - scaledHeight;
+
+						// Create a positioned span for this text item
+						const itemSpan = document.createElement('span');
+						itemSpan.style.cssText = `
+							position: absolute;
+							left: ${x}px;
+							top: ${y}px;
+							font-size: ${scaledHeight}px;
+							font-family: sans-serif;
+							white-space: pre;
+							color: transparent;
+						`;
+
+						// Split into words and create clickable spans
+						const words = str.split(/(\s+)/);
+						words.forEach(part => {
+							if (!part) return;
+							if (/^\s+$/.test(part)) {
+								// Whitespace - just add it
+								itemSpan.appendChild(document.createTextNode(part));
+							} else {
+								// Word - make it clickable
+								const wordSpan = document.createElement('span');
+								wordSpan.textContent = part;
+								wordSpan.dataset.wordIndex = String(pageStartWordIndex + wordCounter);
+								wordSpan.className = 'pdf-word';
+								itemSpan.appendChild(wordSpan);
+								wordCounter++;
+							}
+						});
+
+						textLayerRef.appendChild(itemSpan);
+					}
+
+					// Calculate scale after canvas is displayed
+					requestAnimationFrame(() => {
+						if (pdfCanvas && textLayerRef) {
+							const displayedWidth = pdfCanvas.clientWidth;
+							const scale = displayedWidth / canvasWidth;
+							pdfTextLayerScale = scale;
+							textLayerRef.style.width = `${canvasWidth}px`;
+							textLayerRef.style.height = `${canvasHeight}px`;
+							textLayerRef.style.transform = `scale(${scale})`;
+							textLayerRef.style.transformOrigin = 'top left';
+						}
+					});
+				}
+
+			} catch (err) {
+				console.error('Failed to render PDF page:', err);
+			}
+		})();
+	});
+
+	// Highlight current word in PDF text layer
+	$effect(() => {
+		if (!isPdf || pdfPreviewMode !== 'rendered' || !textLayerRef) return;
+
+		// Remove previous highlight
+		const prev = textLayerRef.querySelector('.pdf-word.current');
+		prev?.classList.remove('current');
+
+		// Add highlight to current word
+		const current = textLayerRef.querySelector(`[data-word-index="${wordIndex}"]`);
+		current?.classList.add('current');
+	});
+
+	// Handle mouse wheel scrolling - advance pages when at top/bottom
+	function handleWheel(event: WheelEvent) {
+		const target = event.currentTarget as HTMLElement;
+		const { scrollTop, scrollHeight, clientHeight } = target;
+
+		// Check if content is scrollable
+		const isScrollable = scrollHeight > clientHeight + 10;
+		const atBottom = !isScrollable || (scrollTop + clientHeight >= scrollHeight - 10);
+		const atTop = !isScrollable || scrollTop <= 10;
+
+		if (event.deltaY > 0 && atBottom && pageIndex < pageCount - 1) {
+			// Scrolling down at bottom - go to next page
+			event.preventDefault();
+			reader.nextPage();
+		} else if (event.deltaY < 0 && atTop && pageIndex > 0) {
+			// Scrolling up at top - go to previous page
+			event.preventDefault();
+			reader.prevPage();
+		}
+	}
+
 	// Close context menu on click outside
 	function handleDocumentClick(event: MouseEvent) {
 		if (contextMenu) {
@@ -250,6 +434,17 @@
 >
 	<div class="preview-header">
 		<span class="preview-title">Page {pageIndex + 1} of {pageCount}</span>
+		{#if isPdf}
+			<button
+				type="button"
+				class="mode-toggle"
+				onclick={togglePdfMode}
+				title={pdfPreviewMode === 'text' ? 'Switch to rendered preview' : 'Switch to text preview'}
+			>
+				{pdfPreviewMode === 'text' ? '📄' : '🖼️'}
+				<span class="mode-label">{pdfPreviewMode === 'text' ? 'Text' : 'Rendered'}</span>
+			</button>
+		{/if}
 	</div>
 
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
@@ -258,12 +453,31 @@
 		onclick={handleClick}
 		onkeydown={handleKeydown}
 		oncontextmenu={handleContextMenu}
+		onwheel={handleWheel}
 		tabindex="0"
 		role="application"
-		aria-label="Page preview. Click on any word to navigate to it."
+		aria-label="Page preview. Click on any word to navigate to it. Scroll to change pages."
 	>
 		<div class="page-box">
-			{#if pagePreviewHtml}
+			{#if isPdf && pdfPreviewMode === 'rendered'}
+				<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+				<div
+					bind:this={pdfContainerRef}
+					class="pdf-rendered-container"
+					class:is-playing={playing}
+					onclick={(e) => {
+						const target = e.target as HTMLElement;
+						const wordSpan = target.closest('[data-word-index]');
+						if (wordSpan) {
+							const idx = parseInt(wordSpan.getAttribute('data-word-index') || '', 10);
+							if (!isNaN(idx)) reader.setWordIndex(idx);
+						}
+					}}
+				>
+					<canvas bind:this={pdfCanvas} class="pdf-canvas"></canvas>
+					<div bind:this={textLayerRef} class="pdf-text-layer"></div>
+				</div>
+			{:else if pagePreviewHtml}
 				{@html pagePreviewHtml}
 			{:else if !doc.document}
 				<p class="preview-message">Load a document to see preview</p>
@@ -313,6 +527,9 @@
 		padding: 0.75rem 1rem;
 		border-bottom: 1px solid var(--guide-color);
 		flex-shrink: 0;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 	}
 
 	.preview-title {
@@ -321,6 +538,28 @@
 		opacity: 0.7;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.mode-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.25rem 0.5rem;
+		background: rgba(128, 128, 128, 0.2);
+		border: 1px solid var(--guide-color);
+		border-radius: 4px;
+		color: var(--text-color);
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition: background-color 0.15s ease;
+	}
+
+	.mode-toggle:hover {
+		background: rgba(128, 128, 128, 0.3);
+	}
+
+	.mode-label {
+		font-weight: 500;
 	}
 
 	.preview-content {
@@ -387,6 +626,54 @@
 		height: auto;
 		display: block;
 		margin: 0 auto;
+	}
+
+	/* PDF rendered container with overlay */
+	.pdf-rendered-container {
+		position: relative;
+		margin: 0 auto;
+		max-width: 100%;
+		display: inline-block;
+	}
+
+	/* PDF canvas for rendered mode */
+	.pdf-canvas {
+		display: block;
+		max-width: 100%;
+		height: auto;
+	}
+
+	/* PDF text layer - positioned on top of canvas */
+	.pdf-text-layer {
+		position: absolute;
+		top: 0;
+		left: 0;
+		/* Width, height, and transform set dynamically to match canvas */
+		overflow: visible;
+		pointer-events: none;
+	}
+
+	/* Word spans for click handling */
+	.pdf-text-layer :global(.pdf-word) {
+		pointer-events: auto;
+		cursor: pointer;
+		border-radius: 2px;
+	}
+
+	.pdf-text-layer :global(.pdf-word:hover) {
+		background-color: rgba(255, 255, 0, 0.3);
+	}
+
+	/* Current word highlight - bright when paused */
+	.pdf-text-layer :global(.pdf-word.current) {
+		background-color: var(--orp-color);
+		opacity: 0.7;
+	}
+
+	/* Subtle highlight when actively reading */
+	.pdf-rendered-container.is-playing .pdf-text-layer :global(.pdf-word.current) {
+		background-color: rgba(128, 128, 128, 0.3);
+		opacity: 1;
 	}
 
 	.preview-message {

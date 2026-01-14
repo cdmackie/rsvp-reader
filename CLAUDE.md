@@ -12,18 +12,18 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 - **Styling:** CSS (no external framework)
 - **Storage:** localStorage for progress persistence
 - **File Parsing:**
-  - EPUB: epub.js or similar client-side library
-  - PDF: pdf.js (phase 2)
-  - URL extraction: Backend service (phase 2)
+  - EPUB: epub.js client-side library
+  - PDF: pdfjs-dist (Mozilla pdf.js)
+  - URL extraction: Backend service (future)
 
 ## Core Features
 
-### Input Sources (Phase 1)
+### Input Sources
 - EPUB file upload and parsing
+- PDF file upload and parsing (with text extraction and rendered preview modes)
 - Plain text file upload
 
-### Input Sources (Phase 2)
-- PDF file upload (client-side pdf.js)
+### Future Input Sources
 - URL content extraction (requires backend)
 
 ### RSVP Display
@@ -64,9 +64,10 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 - Chapter: For EPUB files with chapter markers
 
 **Progress:**
-- Visual progress bar
+- Visual progress bar (clickable to jump to position)
 - Current position indicator (word X of Y, page X of Y)
 - Time remaining estimate at current speed
+- "Last read" position tracking - shows where you were actively reading (not just navigating), clickable to return
 
 ### Color Themes
 
@@ -150,6 +151,7 @@ rsvp/
 │   │   ├── utils/
 │   │   │   ├── orp.ts              # ORP calculation + timing + name detection
 │   │   │   ├── epub-parser.ts      # EPUB parsing with formatting + preview HTML
+│   │   │   ├── pdf-parser.ts       # PDF parsing with pdf.js + preview content
 │   │   │   ├── text-parser.ts      # Plain text parsing
 │   │   │   └── storage.ts          # localStorage helpers
 │   │   └── constants.ts            # Theme presets, speed limits, etc.
@@ -207,8 +209,10 @@ A side panel showing the current page like an e-reader with highlighting and cli
 **Features:**
 - Shows current page content with natural pagination (like an e-reader)
 - EPUB support: Preserves original HTML formatting, links, images via blob URLs
+- PDF support: Text extraction mode or rendered page mode (toggle button)
 - Plain text support: Shows current page with paragraph formatting
 - Click any word to jump to that position
+- Mouse wheel scrolling to change pages (scroll to bottom/top then continue to advance)
 - Toggle visibility with button in header (book icon)
 - Responsive: Hidden on screens < 1024px
 - Memory safe: Blob URLs cleaned up when documents change
@@ -240,9 +244,8 @@ interface ParsedEpubWithContent extends ParsedEpub {
 - `previewVisible: boolean` - default: true
 - `previewWidth: number` - default: 35 (percentage, range 20-50)
 
-## Phase 2 Features (Future)
+## Future Features
 
-- PDF parsing with pdf.js
 - URL content extraction (backend required)
 - Cloud sync for progress/settings
 - Import/export settings

@@ -37,6 +37,20 @@ export function splitWordAtORP(word: string): { before: string; orp: string; aft
 }
 
 /**
+ * Check if a word contains a number.
+ * Matches any word containing digits, which covers:
+ * - Integers: "42", "-100", "+5"
+ * - Decimals: "98.4", "3.14", "-0.5"
+ * - Scientific notation: "1.5e10", "6.022e23"
+ * - Percentages: "100%", "98.4%"
+ * - Fractions: "1/2", "3/4"
+ * - Dates, times, measurements, etc.
+ */
+function containsNumber(word: string): boolean {
+	return /\d/.test(word);
+}
+
+/**
  * Check if a word looks like a proper name.
  * Heuristic: starts with capital letter, not all caps (not an acronym),
  * and has at least 2 letters.
@@ -64,7 +78,7 @@ function looksLikeName(word: string): boolean {
 
 /**
  * Calculate display timing for a word based on WPM and word characteristics.
- * Adds extra time for punctuation, long words, and names.
+ * Adds extra time for punctuation, long words, names, and numbers.
  */
 export function calculateWordDuration(
 	word: string,
@@ -72,7 +86,8 @@ export function calculateWordDuration(
 	punctuationDelayMultiplier = 1.5,
 	longWordDelayMultiplier = 1.2,
 	longWordThreshold = 10,
-	nameDelayMultiplier = 1.3
+	nameDelayMultiplier = 1.3,
+	numberDelayMultiplier = 1.3
 ): number {
 	// Base duration in milliseconds
 	const baseDuration = 60000 / wpm;
@@ -94,6 +109,11 @@ export function calculateWordDuration(
 	// Extra time for names/proper nouns
 	if (nameDelayMultiplier > 1 && looksLikeName(word)) {
 		duration *= nameDelayMultiplier;
+	}
+
+	// Extra time for numbers (dates, percentages, decimals, etc.)
+	if (numberDelayMultiplier > 1 && containsNumber(word)) {
+		duration *= numberDelayMultiplier;
 	}
 
 	return Math.round(duration);

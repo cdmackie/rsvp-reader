@@ -22,12 +22,15 @@ export interface ReaderState {
 	wordIndex: number;
 	isPlaying: boolean;
 	hasStarted: boolean;
+	/** Last position reached while actively reading (not navigating) */
+	lastReadIndex: number | null;
 }
 
 const initialState: ReaderState = {
 	wordIndex: 0,
 	isPlaying: false,
-	hasStarted: false
+	hasStarted: false,
+	lastReadIndex: null
 };
 
 function createReaderStore() {
@@ -90,7 +93,8 @@ function createReaderStore() {
 				if (newIndex % 10 === 0 && currentDoc.fileKey) {
 					saveProgress(currentDoc.fileKey, newIndex, currentDoc.document!.words.length);
 				}
-				return { ...s, wordIndex: newIndex };
+				// Update lastReadIndex - this is where we track active reading position
+				return { ...s, wordIndex: newIndex, lastReadIndex: newIndex };
 			});
 			scheduleNextWord();
 		}, duration);
@@ -99,7 +103,7 @@ function createReaderStore() {
 	return {
 		subscribe,
 		play: () => {
-			update(s => ({ ...s, isPlaying: true, hasStarted: true }));
+			update(s => ({ ...s, isPlaying: true, hasStarted: true, lastReadIndex: s.wordIndex }));
 			scheduleNextWord();
 		},
 		pause: () => {
@@ -122,7 +126,7 @@ function createReaderStore() {
 					saveProgress(doc.fileKey, state.wordIndex, doc.document.words.length);
 				}
 			} else {
-				update(s => ({ ...s, isPlaying: true, hasStarted: true }));
+				update(s => ({ ...s, isPlaying: true, hasStarted: true, lastReadIndex: s.wordIndex }));
 				scheduleNextWord();
 			}
 		},
@@ -194,6 +198,12 @@ function createReaderStore() {
 				const doc = get(documentStore);
 				if (!doc.document) return s;
 				return { ...s, wordIndex: doc.document.words.length - 1, hasStarted: true };
+			});
+		},
+		goToLastRead: () => {
+			update(s => {
+				if (s.lastReadIndex === null) return s;
+				return { ...s, wordIndex: s.lastReadIndex };
 			});
 		},
 		restoreProgress: (fileKey: string) => {
@@ -282,3 +292,19 @@ export const timeRemainingFormatted = derived(timeRemaining, ($seconds) => {
 	}
 	return `${minutes}:${secs.toString().padStart(2, '0')}`;
 });
+
+// Last read position stores
+export const lastReadIndex = derived(reader, ($reader) => $reader.lastReadIndex);
+
+export const lastReadPage = derived(
+	[reader, documentStore],
+	([$reader, $doc]) => {
+		if (!$doc.document || $reader.lastReadIndex === null) return null;
+		return getPageForWordIndex($doc.document, $reader.lastReadIndex);
+	}
+);
+
+export const isAtLastRead = derived(
+	[reader],
+	([$reader]) => $reader.lastReadIndex !== null && $reader.wordIndex === $reader.lastReadIndex
+);

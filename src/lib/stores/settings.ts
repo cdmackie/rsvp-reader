@@ -21,6 +21,7 @@ export interface Settings {
 	nameDelayMultiplier: number;
 	previewVisible: boolean;
 	previewWidth: number; // percentage (20-50)
+	pdfPreviewMode: 'text' | 'rendered'; // text extraction or rendered page image
 }
 
 const defaultSettings: Settings = {
@@ -34,7 +35,8 @@ const defaultSettings: Settings = {
 	pauseOnNames: true,
 	nameDelayMultiplier: 1.3,
 	previewVisible: true,
-	previewWidth: 35
+	previewWidth: 35,
+	pdfPreviewMode: 'text'
 };
 
 function createSettingsStore() {
@@ -104,6 +106,21 @@ function createSettingsStore() {
 		togglePreview: () => {
 			update(s => {
 				const updated = { ...s, previewVisible: !s.previewVisible };
+				saveSettings(updated);
+				return updated;
+			});
+		},
+		setPdfPreviewMode: (mode: 'text' | 'rendered') => {
+			update(s => {
+				const updated = { ...s, pdfPreviewMode: mode };
+				saveSettings(updated);
+				return updated;
+			});
+		},
+		togglePdfPreviewMode: () => {
+			update(s => {
+				const mode = s.pdfPreviewMode === 'text' ? 'rendered' : 'text';
+				const updated = { ...s, pdfPreviewMode: mode };
 				saveSettings(updated);
 				return updated;
 			});

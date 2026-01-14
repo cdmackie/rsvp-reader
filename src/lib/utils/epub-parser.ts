@@ -240,6 +240,7 @@ interface MarkedHtmlResult {
 /**
  * Inject word index markers into an HTML element for preview highlighting.
  * Each word gets wrapped in <span data-word-index="N">.
+ * Images also get data-word-index to track their position for page filtering.
  */
 function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtmlResult {
 	// Clone to avoid mutating original
@@ -247,21 +248,50 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 	let currentIndex = startWordIndex;
 	const imageSrcs: string[] = [];
 
-	// Collect image sources
-	clone.querySelectorAll('img').forEach(img => {
-		const src = img.getAttribute('src');
+	// Collect image sources (case-insensitive for XHTML compatibility)
+	clone.querySelectorAll('img, IMG, image').forEach(img => {
+		const src = img.getAttribute('src') || img.getAttribute('xlink:href');
 		if (src) imageSrcs.push(src);
 	});
 
-	// Walk all text nodes and wrap words
-	const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
-	const textNodes: Text[] = [];
+	// Walk all nodes (text and elements) in document order to properly track
+	// the word index for images based on their position in the flow
+	const walker = document.createTreeWalker(
+		clone,
+		NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+		{
+			acceptNode: (node) => {
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					// Only accept img/image elements for processing (case-insensitive)
+					const tagName = (node as Element).tagName.toUpperCase();
+					if (tagName === 'IMG' || tagName === 'IMAGE') {
+						return NodeFilter.FILTER_ACCEPT;
+					}
+					return NodeFilter.FILTER_SKIP;
+				}
+				return NodeFilter.FILTER_ACCEPT;
+			}
+		}
+	);
 
+	// Collect nodes first, then process (to avoid walker issues during modification)
+	const nodesToProcess: Node[] = [];
 	while (walker.nextNode()) {
-		textNodes.push(walker.currentNode as Text);
+		nodesToProcess.push(walker.currentNode);
 	}
 
-	for (const textNode of textNodes) {
+	for (const node of nodesToProcess) {
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			const tagName = (node as Element).tagName.toUpperCase();
+			if (tagName === 'IMG' || tagName === 'IMAGE') {
+				// Mark image with current word index so it appears on the correct page
+				(node as Element).setAttribute('data-word-index', String(currentIndex));
+				continue;
+			}
+		}
+
+		// Text node processing
+		const textNode = node as Text;
 		const text = textNode.textContent || '';
 		if (!text.trim()) continue;
 
@@ -661,7 +691,6 @@ export async function parseEpub(file: File, targetWordsPerPage = 250): Promise<P
 
 			// Store chapter content for preview
 			const wordRangeEnd = wordIndex > chapterStartWord ? wordIndex - 1 : chapterStartWord;
-			console.log(`[EPUB] Chapter ${chapters.length} "${chapterTitle}": words ${chapterStartWord}-${wordRangeEnd}, images: ${imageUrls.size}, hasHtml: ${!!markedHtml}`);
 			chapterContents.push({
 				chapterIndex: chapters.length,
 				htmlWithMarkers: markedHtml,

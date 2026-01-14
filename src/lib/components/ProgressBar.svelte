@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { progress, currentWordIndex, currentPage, timeRemainingFormatted, reader } from '../stores/reader';
+	import { progress, currentWordIndex, currentPage, timeRemainingFormatted, lastReadPage, isAtLastRead, reader } from '../stores/reader';
 	import { totalWords, totalPages } from '../stores/document';
 	import { currentTheme } from '../stores/settings';
 
@@ -13,6 +13,8 @@
 	const words = $derived($totalWords);
 	const pages = $derived($totalPages);
 	const theme = $derived($currentTheme);
+	const lastPage = $derived($lastReadPage);
+	const atLastRead = $derived($isAtLastRead);
 
 	/**
 	 * Handle click on progress bar to jump to a specific position
@@ -73,6 +75,19 @@
 		<span>Page {pageIndex + 1} of {pages}</span>
 		<span class="separator">|</span>
 		<span>~{timeRemaining} remaining</span>
+		{#if lastPage !== null}
+			<span class="separator">|</span>
+			<button
+				type="button"
+				class="last-read-btn"
+				class:at-position={atLastRead}
+				onclick={() => reader.goToLastRead()}
+				title={atLastRead ? "You are at your last read position" : "Return to where you were reading"}
+				disabled={atLastRead}
+			>
+				Last read: page {lastPage + 1}
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -136,6 +151,32 @@
 
 	.separator {
 		opacity: 0.5;
+	}
+
+	.last-read-btn {
+		background: none;
+		border: none;
+		color: var(--accent-color);
+		cursor: pointer;
+		font-size: inherit;
+		font-family: inherit;
+		padding: 0;
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		opacity: 0.9;
+		transition: opacity 0.15s ease;
+	}
+
+	.last-read-btn:hover:not(:disabled) {
+		opacity: 1;
+		text-decoration-style: solid;
+	}
+
+	.last-read-btn.at-position {
+		color: inherit;
+		text-decoration: none;
+		cursor: default;
+		opacity: 0.7;
 	}
 
 	@media (max-width: 640px) {

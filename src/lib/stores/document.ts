@@ -2,6 +2,7 @@ import { writable, derived } from 'svelte/store';
 import type { ParsedDocument } from '../utils/text-parser';
 import type { ParsedEpub, ChapterInfo, ParsedEpubWithContent } from '../utils/epub-parser';
 import { cleanupEpubResources } from '../utils/epub-parser';
+import type { ParsedPdf, PdfOutlineItem } from '../utils/pdf-parser';
 
 export interface DocumentState {
 	loaded: boolean;
@@ -9,12 +10,36 @@ export interface DocumentState {
 	error: string | null;
 	fileName: string;
 	fileKey: string;
-	fileType: 'text' | 'epub' | null;
-	document: ParsedDocument | ParsedEpub | null;
+	fileType: 'text' | 'epub' | 'pdf' | null;
+	document: ParsedDocument | ParsedEpub | ParsedPdf | null;
 }
 
 // Track the current document for cleanup
-let currentDocument: ParsedDocument | ParsedEpub | null = null;
+let currentDocument: ParsedDocument | ParsedEpub | ParsedPdf | null = null;
+
+// Cache for PDF document objects (for rendering pages)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let cachedPdfDocument: any = null;
+let cachedPdfFileKey: string | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setPdfDocumentCache(pdfDoc: any, fileKey: string) {
+	cachedPdfDocument = pdfDoc;
+	cachedPdfFileKey = fileKey;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getPdfDocumentCache(fileKey: string): any | null {
+	if (cachedPdfFileKey === fileKey && cachedPdfDocument) {
+		return cachedPdfDocument;
+	}
+	return null;
+}
+
+export function clearPdfDocumentCache() {
+	cachedPdfDocument = null;
+	cachedPdfFileKey = null;
+}
 
 const initialState: DocumentState = {
 	loaded: false,
@@ -40,10 +65,10 @@ function createDocumentStore() {
 			}));
 		},
 		setDocument: (
-			document: ParsedDocument | ParsedEpub,
+			document: ParsedDocument | ParsedEpub | ParsedPdf,
 			fileName: string,
 			fileKey: string,
-			fileType: 'text' | 'epub'
+			fileType: 'text' | 'epub' | 'pdf'
 		) => {
 			// Clean up previous document's blob URLs if it was an EPUB
 			if (currentDocument && 'chapterContents' in currentDocument) {
@@ -119,5 +144,32 @@ export const parseWarnings = derived(documentStore, ($doc): string[] => {
 	if ($doc.fileType === 'epub' && $doc.document) {
 		return ($doc.document as ParsedEpub).parseWarnings || [];
 	}
+	if ($doc.fileType === 'pdf' && $doc.document) {
+		return ($doc.document as ParsedPdf).parseWarnings || [];
+	}
 	return [];
+});
+
+// PDF-specific derived stores
+export const isPdf = derived(documentStore, ($doc) => $doc.fileType === 'pdf');
+
+export const pdfOutline = derived(documentStore, ($doc): PdfOutlineItem[] => {
+	if ($doc.fileType === 'pdf' && $doc.document) {
+		return ($doc.document as ParsedPdf).outline || [];
+	}
+	return [];
+});
+
+export const pdfTitle = derived(documentStore, ($doc): string => {
+	if ($doc.fileType === 'pdf' && $doc.document) {
+		return ($doc.document as ParsedPdf).title || $doc.fileName;
+	}
+	return $doc.fileName;
+});
+
+export const pdfAuthor = derived(documentStore, ($doc): string => {
+	if ($doc.fileType === 'pdf' && $doc.document) {
+		return ($doc.document as ParsedPdf).author || 'Unknown';
+	}
+	return '';
 });

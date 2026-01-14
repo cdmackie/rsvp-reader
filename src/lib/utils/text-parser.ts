@@ -28,7 +28,7 @@ export interface ParsedDocument {
  * "forty-nine-year-old" (3+ hyphens) becomes ["forty-", "nine-", "year-", "old"]
  * "forty-nine" (2 parts) stays as "forty-nine"
  */
-function splitOnDashes(word: string): string[] {
+export function splitOnDashes(word: string): string[] {
 	// First check for long hyphenated compounds (3+ parts)
 	const hyphenParts = word.split('-');
 	if (hyphenParts.length > 2) {

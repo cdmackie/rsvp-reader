@@ -10,7 +10,7 @@
 
 	import { currentTheme, settings } from '$lib/stores/settings';
 	import { documentStore, isDocumentLoaded, epubTitle, epubAuthor, isEpub, chapters } from '$lib/stores/document';
-	import { reader, currentChapter, timeRemainingFormatted } from '$lib/stores/reader';
+	import { reader, currentChapter } from '$lib/stores/reader';
 	import { WPM_STEP, MIN_WPM, MAX_WPM } from '$lib/constants';
 
 	let settingsOpen = $state(false);
@@ -24,7 +24,6 @@
 	const isEpubFile = $derived($isEpub);
 	const chapterList = $derived($chapters);
 	const currentChapterIndex = $derived($currentChapter);
-	const timeRemaining = $derived($timeRemainingFormatted);
 	const currentWpm = $derived($settings.wpm);
 	const previewVisible = $derived($settings.previewVisible);
 	const previewWidth = $derived($settings.previewWidth);
@@ -184,8 +183,8 @@
 							<SpeedSlider />
 						</div>
 
-						<div class="meta-section">
-							{#if isEpubFile && chapterList.length > 0}
+						{#if isEpubFile && chapterList.length > 0}
+							<div class="meta-section">
 								<div class="chapter-select">
 									<label for="chapter-select">Chapter:</label>
 									<select id="chapter-select" onchange={handleChapterChange} value={currentChapterIndex}>
@@ -194,11 +193,8 @@
 										{/each}
 									</select>
 								</div>
-							{/if}
-							<div class="time-remaining">
-								~{timeRemaining} remaining
 							</div>
-						</div>
+						{/if}
 					</div>
 				</div>
 
@@ -431,10 +427,6 @@
 		border-radius: 0.375rem;
 		padding: 0.375rem 0.75rem;
 		max-width: 200px;
-	}
-
-	.time-remaining {
-		opacity: 0.7;
 	}
 
 	/* Responsive */

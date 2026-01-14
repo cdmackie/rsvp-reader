@@ -8,12 +8,14 @@ A web-based Rapid Serial Visual Presentation (RSVP) reader that displays text on
 
 ## Features
 
-- **EPUB & Text Support** - Load EPUB ebooks or plain text files
+- **EPUB, PDF & Text Support** - Load EPUB ebooks, PDF documents, or plain text files
 - **ORP Highlighting** - Optimal Recognition Point letter highlighted for faster reading
 - **Adjustable Speed** - 100-900 WPM with real-time adjustment
 - **Smart Pauses** - Extra time on punctuation, long words, and names
 - **Text Formatting** - Preserves italic and bold from EPUBs
 - **Progress Tracking** - Saves your position per file automatically
+- **Last Read Position** - Tracks where you were actively reading, clickable to return
+- **Preview Panel** - Side panel shows current page with click-to-navigate
 - **Keyboard Navigation** - Full keyboard control for hands-free reading
 - **Themes** - Dark, Light, Sepia, and High Contrast modes
 - **Responsive** - Works on desktop and mobile
@@ -41,7 +43,7 @@ npm run dev
 npm run build
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and load an EPUB or text file to start reading.
+Open [http://localhost:5173](http://localhost:5173) and load an EPUB, PDF, or text file to start reading.
 
 ## Keyboard Shortcuts
 
@@ -74,6 +76,7 @@ RSVP displays words one at a time at a fixed focal point. The **Optimal Recognit
 - **Framework:** [SvelteKit](https://kit.svelte.dev/) with Svelte 5 runes
 - **Language:** TypeScript
 - **EPUB Parsing:** [epub.js](https://github.com/futurepress/epub.js)
+- **PDF Parsing:** [pdf.js](https://mozilla.github.io/pdf.js/) (pdfjs-dist)
 - **Storage:** localStorage for settings and progress
 - **Styling:** CSS (no framework)
 
@@ -86,6 +89,7 @@ src/
 │   │   ├── Redicle.svelte      # Word display with ORP
 │   │   ├── Controls.svelte     # Playback controls
 │   │   ├── FileLoader.svelte   # File input
+│   │   ├── Preview.svelte      # Context preview panel
 │   │   └── Settings.svelte     # Theme/font settings
 │   ├── stores/         # Svelte stores
 │   │   ├── reader.ts   # Playback state
@@ -94,6 +98,7 @@ src/
 │   └── utils/          # Utilities
 │       ├── orp.ts      # ORP calculation
 │       ├── epub-parser.ts
+│       ├── pdf-parser.ts
 │       └── text-parser.ts
 └── routes/
     └── +page.svelte    # Main page
@@ -110,4 +115,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - Inspired by [Spritz](https://spritz.com/) speed reading technology
-- Built with [Svelte](https://svelte.dev/) and [epub.js](https://github.com/futurepress/epub.js)
+- Built with [Svelte](https://svelte.dev/), [epub.js](https://github.com/futurepress/epub.js), and [pdf.js](https://mozilla.github.io/pdf.js/)

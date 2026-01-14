@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { documentStore, isDocumentLoading, documentError, parseWarnings } from '../stores/document';
+	import { documentStore, isDocumentLoading, documentError, parseWarnings, setPdfDocumentCache } from '../stores/document';
 	import { reader } from '../stores/reader';
 	import { currentTheme } from '../stores/settings';
 	import { parseEpub, type ParsedEpub } from '../utils/epub-parser';
 	import { parseText } from '../utils/text-parser';
+	import type { ParsedPdf } from '../utils/pdf-parser';
 	import { generateFileKey, addRecentFile } from '../utils/storage';
 
 	// Derived store values
@@ -39,12 +40,22 @@
 			const extension = file.name.toLowerCase().split('.').pop();
 
 			let parsedDocument;
-			let fileType: 'text' | 'epub';
+			let fileType: 'text' | 'epub' | 'pdf';
 
 			// Parse based on file type
 			if (extension === 'epub') {
 				parsedDocument = await parseEpub(file);
 				fileType = 'epub';
+			} else if (extension === 'pdf') {
+				// Dynamic import to avoid SSR issues (pdf.js uses browser APIs)
+				const { parsePdf } = await import('../utils/pdf-parser');
+				const pdfResult = await parsePdf(file);
+				parsedDocument = pdfResult.parsed;
+				fileType = 'pdf';
+				// Cache the PDF document for rendered preview mode
+				if (pdfResult.pdfDocument) {
+					setPdfDocumentCache(pdfResult.pdfDocument, fileKey);
+				}
 			} else if (extension === 'txt') {
 				const text = await file.text();
 				parsedDocument = parseText(text);
@@ -53,24 +64,46 @@
 				throw new Error(`Unsupported file type: ${extension}`);
 			}
 
-			// Validate document has content
-			if (!parsedDocument.words || parsedDocument.words.length === 0) {
-				throw new Error('The file appears to be empty or contains no readable text.');
-			}
+			// Check for parse warnings
+			let hasWarnings = false;
+			let warningMessages: string[] = [];
 
-			// Check for EPUB parse warnings and show to user
 			if (fileType === 'epub') {
 				const epubDoc = parsedDocument as ParsedEpub;
 				if (epubDoc.parseWarnings && epubDoc.parseWarnings.length > 0) {
-					showWarnings = true;
+					hasWarnings = true;
+					warningMessages = epubDoc.parseWarnings;
 				}
+			} else if (fileType === 'pdf') {
+				const pdfDoc = parsedDocument as ParsedPdf;
+				if (pdfDoc.parseWarnings && pdfDoc.parseWarnings.length > 0) {
+					hasWarnings = true;
+					warningMessages = pdfDoc.parseWarnings;
+				}
+			}
+
+			// Validate document has content
+			if (!parsedDocument.words || parsedDocument.words.length === 0) {
+				// If we have warnings, show them as the error
+				if (hasWarnings && warningMessages.length > 0) {
+					throw new Error(warningMessages.join(' '));
+				}
+				throw new Error('The file appears to be empty or contains no readable text.');
+			}
+
+			// Show warnings to user if there are any
+			if (hasWarnings) {
+				showWarnings = true;
 			}
 
 			// Set the document in store
 			documentStore.setDocument(parsedDocument, file.name, fileKey, fileType);
 
-			// Try to restore reading progress
-			reader.restoreProgress(fileKey);
+			// Try to restore reading progress, or reset to beginning for new files
+			const hasProgress = reader.restoreProgress(fileKey);
+			if (!hasProgress) {
+				reader.setWordIndex(0);
+			}
 
 			// Add to recent files
 			addRecentFile({
@@ -103,10 +136,10 @@
 <input
 	bind:this={fileInput}
 	type="file"
-	accept=".epub,.txt"
+	accept=".epub,.txt,.pdf"
 	onchange={handleFileSelect}
 	class="hidden"
-	aria-label="Select EPUB or text file"
+	aria-label="Select EPUB, PDF, or text file"
 />
 
 <div class="file-loader">
