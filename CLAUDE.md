@@ -31,8 +31,8 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 **ORP (Optimal Recognition Point) Positioning:**
 - The ORP letter is highlighted in red and aligned to a fixed focal point
 - Word positioning based on length:
-  - 1-3 letters: 1st letter is ORP
-  - 4-6 letters: 2nd letter is ORP
+  - 1 letter: 1st letter is ORP
+  - 2-6 letters: 2nd letter is ORP
   - 7-9 letters: 3rd letter is ORP
   - 10+ letters: 4th letter is ORP
 

@@ -133,31 +133,43 @@
 		justify-content: center;
 		width: 100%;
 		padding: 1rem 0;
+		position: relative;
 	}
 
 	.word-display {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: baseline;
 		font-family: var(--font-family);
 		font-size: var(--font-size);
 		line-height: 1.2;
 		color: var(--text-color);
 		white-space: nowrap;
+		width: 100%;
+		max-width: 100%;
 	}
 
 	.before-orp {
 		text-align: right;
 		color: var(--text-color);
+		overflow: hidden;
+		text-overflow: clip;
+		justify-self: end;
 	}
 
 	.orp-letter {
 		color: var(--orp-color);
 		font-weight: 700;
+		/* ORP letter is the fixed center point */
+		text-align: center;
 	}
 
 	.after-orp {
 		text-align: left;
 		color: var(--text-color);
+		overflow: hidden;
+		text-overflow: clip;
+		justify-self: start;
 	}
 
 	@media (max-width: 768px) {

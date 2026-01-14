@@ -51,8 +51,31 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
 	// Get spine items (the reading order)
 	const spine = book.spine;
 
+	// epub.js stores spine items in different properties depending on version
+	let spineItems: any[] = [];
+
+	// Try different ways to access spine items
+	if ((spine as any).spineItems && Array.isArray((spine as any).spineItems)) {
+		spineItems = (spine as any).spineItems;
+	} else if ((spine as any).items && Array.isArray((spine as any).items)) {
+		spineItems = (spine as any).items;
+	} else if (typeof (spine as any).each === 'function') {
+		// Use the each() iterator if available
+		(spine as any).each((item: any) => spineItems.push(item));
+	} else if ((spine as any).length) {
+		// Try accessing by index
+		for (let i = 0; i < (spine as any).length; i++) {
+			const item = (spine as any).get(i);
+			if (item) spineItems.push(item);
+		}
+	}
+
+	if (spineItems.length === 0) {
+		parseWarnings.push('No spine items found in EPUB - the file may be malformed or use an unsupported format');
+	}
+
 	// Process each spine item (section/chapter)
-	for (const spineItem of (spine as any).items) {
+	for (const spineItem of spineItems) {
 		const chapterStartWord = wordIndex;
 		chapterStarts.push(chapterStartWord);
 
@@ -61,11 +84,40 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
 		const chapterTitle = tocEntry?.label || `Section ${chapters.length + 1}`;
 
 		try {
-			// Load the section content
-			const section = await book.section(spineItem.href);
-			if (!section) continue;
+			// Load the section content - spineItem might be a Section object itself
+			let section = spineItem;
+			if (typeof spineItem.load !== 'function') {
+				// It's just a reference, need to get actual section
+				section = await book.section(spineItem.href || spineItem.idref);
+			}
 
-			const contents = await section.load(book.load.bind(book));
+			if (!section) {
+				parseWarnings.push(`Section not found: ${spineItem.href || spineItem.idref}`);
+				continue;
+			}
+
+			let contents: string | Document | null = null;
+			try {
+				contents = await section.load(book.load.bind(book));
+			} catch (loadErr) {
+				console.warn('Section load error:', loadErr);
+				// Try alternative loading method
+				try {
+					const url = await book.resolve(spineItem.href || spineItem.idref);
+					if (url) {
+						const response = await fetch(url);
+						const html = await response.text();
+						contents = html;
+					}
+				} catch {
+					// Ignore fetch errors
+				}
+			}
+
+			if (!contents) {
+				parseWarnings.push(`Could not load content for: ${chapterTitle}`);
+				continue;
+			}
 
 			// Extract text from HTML content
 			let textContent = '';
@@ -73,6 +125,32 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
 				textContent = stripHtml(contents);
 			} else if (contents instanceof Document) {
 				textContent = contents.body?.textContent || '';
+			} else if (contents instanceof Element) {
+				// HTMLHtmlElement or other Element - find body in various ways
+				const el = contents as Element;
+				let bodyEl = el.querySelector('body');
+
+				// If querySelector fails (XHTML namespace issues), try other methods
+				if (!bodyEl) {
+					bodyEl = el.getElementsByTagName('body')[0] || null;
+				}
+				if (!bodyEl && el.children) {
+					// Body is usually the second child of html element (after head)
+					for (let i = 0; i < el.children.length; i++) {
+						if (el.children[i].tagName.toLowerCase() === 'body') {
+							bodyEl = el.children[i];
+							break;
+						}
+					}
+				}
+
+				textContent = bodyEl?.textContent || el.textContent || '';
+			} else if (contents && typeof (contents as any).documentElement !== 'undefined') {
+				// Handle XMLDocument
+				textContent = (contents as any).body?.textContent || (contents as any).documentElement?.textContent || '';
+			} else if (contents && typeof (contents as any).textContent === 'string') {
+				// Fallback: any object with textContent
+				textContent = (contents as any).textContent || '';
 			}
 
 			// Split into paragraphs
