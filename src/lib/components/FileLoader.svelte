@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { documentStore, isDocumentLoading, documentError, parseWarnings, setPdfDocumentCache } from '../stores/document';
 	import { reader } from '../stores/reader';
 	import { currentTheme } from '../stores/settings';
 	import { parseEpub, type ParsedEpub } from '../utils/epub-parser';
 	import { parseText } from '../utils/text-parser';
 	import type { ParsedPdf } from '../utils/pdf-parser';
-	import { generateFileKey, addRecentFile } from '../utils/storage';
+	import { generateFileKey, addRecentFile, saveLastFile, loadLastFile } from '../utils/storage';
 
 	// Derived store values
 	const loading = $derived($isDocumentLoading);
@@ -17,19 +18,30 @@
 	let fileInput: HTMLInputElement | undefined = $state();
 	let loadedFileName = $state('');
 	let showWarnings = $state(false);
+	let autoLoadAttempted = $state(false);
+
+	// Auto-load last file on mount
+	onMount(async () => {
+		if (autoLoadAttempted) return;
+		autoLoadAttempted = true;
+
+		try {
+			const lastFile = await loadLastFile();
+			if (lastFile) {
+				await loadFile(lastFile);
+			}
+		} catch (e) {
+			console.error('Failed to auto-load last file:', e);
+		}
+	});
 
 	/**
-	 * Handle file selection and loading
+	 * Core file loading logic - used by both file input and auto-load
 	 */
-	async function handleFileSelect(event: Event) {
-		const target = event.target as HTMLInputElement;
-		const file = target.files?.[0];
-
-		if (!file) return;
-
+	async function loadFile(file: File, saveToStorage: boolean = false): Promise<void> {
 		// Reset previous state and stop any active playback
 		loadedFileName = '';
-		reader.pause(); // Stop playback and clear timer before loading new document
+		reader.pause();
 		documentStore.setLoading(file.name);
 
 		try {
@@ -84,7 +96,6 @@
 
 			// Validate document has content
 			if (!parsedDocument.words || parsedDocument.words.length === 0) {
-				// If we have warnings, show them as the error
 				if (hasWarnings && warningMessages.length > 0) {
 					throw new Error(warningMessages.join(' '));
 				}
@@ -113,6 +124,11 @@
 				totalWords: parsedDocument.totalWords
 			});
 
+			// Save file to IndexedDB for auto-reload on refresh
+			if (saveToStorage) {
+				saveLastFile(file).catch(e => console.error('Failed to save file for reload:', e));
+			}
+
 			// Update local state
 			loadedFileName = file.name;
 		} catch (err) {
@@ -120,6 +136,18 @@
 			documentStore.setError(errorMessage);
 			console.error('File loading error:', err);
 		}
+	}
+
+	/**
+	 * Handle file selection from input
+	 */
+	async function handleFileSelect(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+
+		if (!file) return;
+
+		await loadFile(file, true); // Save to storage for reload
 
 		// Clear the input so the same file can be loaded again
 		target.value = '';

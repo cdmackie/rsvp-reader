@@ -1,5 +1,139 @@
 import { STORAGE_KEYS } from '../constants';
 
+// IndexedDB for storing large files
+const DB_NAME = 'quickreader-db';
+const DB_VERSION = 1;
+const FILE_STORE = 'lastFile';
+
+/**
+ * Open IndexedDB database
+ */
+function openDB(): Promise<IDBDatabase> {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => resolve(request.result);
+
+		request.onupgradeneeded = (event) => {
+			const db = (event.target as IDBOpenDBRequest).result;
+			if (!db.objectStoreNames.contains(FILE_STORE)) {
+				db.createObjectStore(FILE_STORE, { keyPath: 'id' });
+			}
+		};
+	});
+}
+
+/**
+ * Save the last opened file to IndexedDB for restoration on refresh
+ */
+export async function saveLastFile(file: File): Promise<void> {
+	try {
+		const db = await openDB();
+		const transaction = db.transaction(FILE_STORE, 'readwrite');
+		const store = transaction.objectStore(FILE_STORE);
+
+		// Store file as ArrayBuffer with metadata
+		const arrayBuffer = await file.arrayBuffer();
+
+		store.put({
+			id: 'lastFile',
+			name: file.name,
+			type: file.type,
+			size: file.size,
+			data: arrayBuffer,
+			savedAt: Date.now()
+		});
+
+		await new Promise<void>((resolve, reject) => {
+			transaction.oncomplete = () => resolve();
+			transaction.onerror = () => reject(transaction.error);
+		});
+
+		db.close();
+	} catch (e) {
+		console.error('Failed to save last file:', e);
+	}
+}
+
+/**
+ * Load the last opened file from IndexedDB
+ */
+export async function loadLastFile(): Promise<File | null> {
+	try {
+		const db = await openDB();
+		const transaction = db.transaction(FILE_STORE, 'readonly');
+		const store = transaction.objectStore(FILE_STORE);
+
+		const result = await new Promise<{
+			name: string;
+			type: string;
+			size: number;
+			data: ArrayBuffer;
+			savedAt: number;
+		} | undefined>((resolve, reject) => {
+			const request = store.get('lastFile');
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+
+		db.close();
+
+		if (!result) return null;
+
+		// Reconstruct File from stored data
+		const blob = new Blob([result.data], { type: result.type });
+		return new File([blob], result.name, { type: result.type });
+	} catch (e) {
+		console.error('Failed to load last file:', e);
+		return null;
+	}
+}
+
+/**
+ * Clear the stored last file
+ */
+export async function clearLastFile(): Promise<void> {
+	try {
+		const db = await openDB();
+		const transaction = db.transaction(FILE_STORE, 'readwrite');
+		const store = transaction.objectStore(FILE_STORE);
+
+		store.delete('lastFile');
+
+		await new Promise<void>((resolve, reject) => {
+			transaction.oncomplete = () => resolve();
+			transaction.onerror = () => reject(transaction.error);
+		});
+
+		db.close();
+	} catch (e) {
+		console.error('Failed to clear last file:', e);
+	}
+}
+
+/**
+ * Check if there's a stored file without loading it
+ */
+export async function hasLastFile(): Promise<boolean> {
+	try {
+		const db = await openDB();
+		const transaction = db.transaction(FILE_STORE, 'readonly');
+		const store = transaction.objectStore(FILE_STORE);
+
+		const count = await new Promise<number>((resolve, reject) => {
+			const request = store.count('lastFile');
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+
+		db.close();
+		return count > 0;
+	} catch (e) {
+		return false;
+	}
+}
+
 /**
  * Generate a simple hash for a file to use as a unique identifier.
  * Combines filename and file size for reasonable uniqueness.
