@@ -26,15 +26,12 @@
 		autoLoadAttempted = true;
 
 		try {
-			console.log('[QuickReader] Checking for last file...');
 			const lastFile = await loadLastFile();
-			console.log('[QuickReader] Last file result:', lastFile ? lastFile.name : 'none');
 			if (lastFile) {
-				console.log('[QuickReader] Auto-loading:', lastFile.name);
 				await loadFile(lastFile);
 			}
 		} catch (e) {
-			console.error('[QuickReader] Failed to auto-load last file:', e);
+			console.error('Failed to auto-load last file:', e);
 		}
 	});
 
@@ -129,10 +126,7 @@
 
 			// Save file to IndexedDB for auto-reload on refresh
 			if (saveToStorage) {
-				console.log('[QuickReader] Saving file for reload:', file.name);
-				saveLastFile(file)
-					.then(() => console.log('[QuickReader] File saved successfully'))
-					.catch(e => console.error('[QuickReader] Failed to save file for reload:', e));
+				saveLastFile(file).catch(e => console.error('Failed to save file for reload:', e));
 			}
 
 			// Update local state
