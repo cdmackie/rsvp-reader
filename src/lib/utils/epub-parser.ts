@@ -344,8 +344,6 @@ async function resolveImageUrls(
 
 	// Get the package directory (e.g., "OEBPS/")
 	const packageDir = (book as any).packaging?.directory || '';
-	console.log(`[EPUB] Package directory: "${packageDir}"`);
-	console.log(`[EPUB] Resolving ${imageSrcs.length} images for chapter: ${chapterHref}`);
 
 	for (const src of imageSrcs) {
 		try {
@@ -365,8 +363,6 @@ async function resolveImageUrls(
 				}, []).join('/');
 			}
 
-			console.log(`[EPUB] Resolving image: ${src} -> ${resolvedPath}`);
-
 			// Try different methods to get the image blob
 			const archive = (book as any).archive;
 			let blob: Blob | null = null;
@@ -377,12 +373,9 @@ async function resolveImageUrls(
 					const zipFile = archive.zip.file(resolvedPath);
 					if (zipFile) {
 						blob = await zipFile.async('blob');
-						console.log(`[EPUB] Got blob via zip.file: size=${blob?.size}`);
-					} else {
-						console.log(`[EPUB] zip.file returned null for: ${resolvedPath}`);
 					}
 				} catch (e) {
-					console.log(`[EPUB] zip.file method failed:`, e);
+					// zip.file method failed, try next method
 				}
 			}
 
@@ -396,10 +389,9 @@ async function resolveImageUrls(
 					const zipFile = archive.zip.file(pathWithoutPkg);
 					if (zipFile) {
 						blob = await zipFile.async('blob');
-						console.log(`[EPUB] Got blob via zip.file (without pkg): size=${blob?.size}`);
 					}
 				} catch (e) {
-					console.log(`[EPUB] zip.file (without pkg) method failed:`, e);
+					// zip.file (without pkg) method failed, try next method
 				}
 			}
 
@@ -414,29 +406,24 @@ async function resolveImageUrls(
 							const zipFile = files[path];
 							if (!zipFile.dir) {
 								blob = await zipFile.async('blob');
-								console.log(`[EPUB] Got blob via file search: ${path}, size=${blob?.size}`);
 								break;
 							}
 						}
 					}
 				} catch (e) {
-					console.log(`[EPUB] file search method failed:`, e);
+					// file search method failed
 				}
 			}
 
 			if (blob) {
 				const blobUrl = URL.createObjectURL(blob);
 				urlMap.set(src, blobUrl);
-				console.log(`[EPUB] Created blob URL for ${src}: ${blobUrl}`);
-			} else {
-				console.warn(`[EPUB] Could not resolve image: ${src}`);
 			}
 		} catch (e) {
-			console.warn(`[EPUB] Failed to resolve image: ${src}`, e);
+			// Failed to resolve image, continue with next
 		}
 	}
 
-	console.log(`[EPUB] Resolved ${urlMap.size}/${imageSrcs.length} images`);
 	return urlMap;
 }
 

@@ -1,10 +1,12 @@
-# RSVP Speed Reader
+# QuickReader
 
-A web-based Rapid Serial Visual Presentation (RSVP) reader for speed reading PDFs, ebooks, and text content.
+A web-based RSVP (Rapid Serial Visual Presentation) speed reader for PDFs, ebooks, and text content.
+
+**Live site:** https://quickreader.app
 
 ## Project Overview
 
-This application displays text one word at a time using the Spritz-style ORP (Optimal Recognition Point) technique, allowing users to read at speeds of 100-900 words per minute without eye movement.
+This application displays text one word at a time using the Spritz-style ORP (Optimal Recognition Point) technique, allowing users to read at speeds of 100-900 words per minute without eye movement. All file processing happens locally in the browser - no uploads, no tracking.
 
 ## Tech Stack
 
@@ -98,9 +100,8 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  [Logo/Title]              [Open File] [Settings] │
+│  QuickReader RSVP          [Open File] [Settings] │
 ├─────────────────────────────────────────────────┤
-│                                                   │
 │                                                   │
 │            ┌─────────────────────┐               │
 │            │    ───|───          │               │
@@ -109,14 +110,15 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 │            └─────────────────────┘               │
 │                                                   │
 │              [Progress Bar]                       │
-│         Word 1,234 of 50,000 | Page 12           │
+│         Word 1,234 of 50,000 | ~15 min left      │
 │                                                   │
-├─────────────────────────────────────────────────┤
+│               [Chapter: ▼]                        │
 │  [|◀] [◀◀] [◀] [ ▶/❚❚ ] [▶] [▶▶] [▶|]          │
-│                                                   │
 │        Speed: [====●=====] 300 WPM               │
 │                                                   │
-│  [Chapter ▼]                    ~15 min left     │
+├─────────────────────────────────────────────────┤
+│     About · Help · Privacy · GitHub              │
+│   © 2025 QuickReader. Open source under MIT.     │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -131,10 +133,14 @@ rsvp/
 ├── svelte.config.js
 ├── vite.config.js
 ├── src/
-│   ├── app.html
+│   ├── app.html           # SEO meta tags, OG, Twitter cards, JSON-LD
 │   ├── app.css            # Global styles, CSS variables for themes
 │   ├── routes/
-│   │   └── +page.svelte   # Main (only) page
+│   │   ├── +layout.svelte # Layout with Footer
+│   │   ├── +page.svelte   # Main reader page
+│   │   ├── about/         # About RSVP technology
+│   │   ├── help/          # Keyboard shortcuts & guide
+│   │   └── privacy/       # Privacy policy
 │   ├── lib/
 │   │   ├── components/
 │   │   │   ├── Redicle.svelte      # The RSVP display box
@@ -143,7 +149,8 @@ rsvp/
 │   │   │   ├── ProgressBar.svelte  # Reading progress
 │   │   │   ├── FileLoader.svelte   # File input handling
 │   │   │   ├── Settings.svelte     # Theme/font settings modal
-│   │   │   └── Preview.svelte      # Context preview panel
+│   │   │   ├── Preview.svelte      # Context preview panel
+│   │   │   └── Footer.svelte       # Site footer with nav links
 │   │   ├── stores/
 │   │   │   ├── reader.ts           # Reading state (words, position, playing)
 │   │   │   ├── settings.ts         # User preferences (includes preview settings)
@@ -153,10 +160,11 @@ rsvp/
 │   │   │   ├── epub-parser.ts      # EPUB parsing with formatting + preview HTML
 │   │   │   ├── pdf-parser.ts       # PDF parsing with pdf.js + preview content
 │   │   │   ├── text-parser.ts      # Plain text parsing
-│   │   │   └── storage.ts          # localStorage helpers
+│   │   │   └── storage.ts          # localStorage + IndexedDB helpers
 │   │   └── constants.ts            # Theme presets, speed limits, etc.
-│   └── static/
-│       └── (any static assets)
+├── static/
+│   ├── robots.txt         # SEO: Allow all crawling
+│   └── sitemap.xml        # SEO: Page listing for search engines
 └── tests/                  # Future: component tests
 ```
 

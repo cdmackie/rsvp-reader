@@ -1,6 +1,8 @@
-# RSVP Speed Reader
+# QuickReader
 
-A web-based Rapid Serial Visual Presentation (RSVP) reader that displays text one word at a time, allowing you to read at 100-900+ words per minute without eye movement.
+A web-based RSVP (Rapid Serial Visual Presentation) speed reader that displays text one word at a time, allowing you to read at 100-900+ words per minute without eye movement.
+
+**Live site:** [quickreader.app](https://quickreader.app)
 
 ![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
@@ -19,6 +21,7 @@ A web-based Rapid Serial Visual Presentation (RSVP) reader that displays text on
 - **Keyboard Navigation** - Full keyboard control for hands-free reading
 - **Themes** - Dark, Light, Sepia, and High Contrast modes
 - **Responsive** - Works on desktop and mobile
+- **Privacy First** - All processing happens locally, no uploads
 
 ## Demo
 
@@ -101,7 +104,10 @@ src/
 │       ├── pdf-parser.ts
 │       └── text-parser.ts
 └── routes/
-    └── +page.svelte    # Main page
+    ├── +page.svelte    # Main reader page
+    ├── about/          # About RSVP technology
+    ├── help/           # Keyboard shortcuts & guide
+    └── privacy/        # Privacy policy
 ```
 
 ## Contributing

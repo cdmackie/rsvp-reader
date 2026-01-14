@@ -114,7 +114,9 @@
 >
 	<header class="header">
 		<div class="header-left">
-			<h1 class="logo">QuickReader</h1>
+			<h1 class="logo">QuickReader <span class="tagline">RSVP Speed Reader</span></h1>
+		</div>
+		<div class="header-right">
 			{#if docLoaded && title}
 				<span class="doc-info">
 					{title}
@@ -123,8 +125,6 @@
 					{/if}
 				</span>
 			{/if}
-		</div>
-		<div class="header-right">
 			<FileLoader />
 			{#if docLoaded}
 				<button
@@ -177,24 +177,22 @@
 					</div>
 
 					<div class="controls-section">
+						{#if isEpubFile && chapterList.length > 0}
+							<div class="chapter-section">
+								<label for="chapter-select">Chapter:</label>
+								<select id="chapter-select" onchange={handleChapterChange} value={currentChapterIndex}>
+									{#each chapterList as chapter, index}
+										<option value={index}>{chapter.title}</option>
+									{/each}
+								</select>
+							</div>
+						{/if}
+
 						<Controls />
 
 						<div class="speed-section">
 							<SpeedSlider />
 						</div>
-
-						{#if isEpubFile && chapterList.length > 0}
-							<div class="meta-section">
-								<div class="chapter-select">
-									<label for="chapter-select">Chapter:</label>
-									<select id="chapter-select" onchange={handleChapterChange} value={currentChapterIndex}>
-										{#each chapterList as chapter, index}
-											<option value={index}>{chapter.title}</option>
-										{/each}
-									</select>
-								</div>
-							</div>
-						{/if}
 					</div>
 				</div>
 
@@ -241,6 +239,13 @@
 		font-size: 1.5rem;
 		font-weight: 700;
 		margin: 0;
+	}
+
+	.tagline {
+		font-size: 0.9rem;
+		font-weight: 400;
+		opacity: 0.7;
+		margin-left: 0.5rem;
 	}
 
 	.doc-info {
@@ -401,32 +406,25 @@
 		justify-content: center;
 	}
 
-	.meta-section {
+	.chapter-section {
 		display: flex;
-		justify-content: space-between;
+		justify-content: center;
 		align-items: center;
-		flex-wrap: wrap;
-		gap: 1rem;
+		gap: 0.5rem;
 		font-size: 0.9rem;
 	}
 
-	.chapter-select {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.chapter-select label {
+	.chapter-section label {
 		opacity: 0.8;
 	}
 
-	.chapter-select select {
+	.chapter-section select {
 		background: var(--color-controls-bg);
 		color: var(--color-text);
 		border: 1px solid var(--color-guide);
 		border-radius: 0.375rem;
 		padding: 0.375rem 0.75rem;
-		max-width: 200px;
+		max-width: 250px;
 	}
 
 	/* Responsive */
@@ -453,6 +451,10 @@
 
 		.logo {
 			font-size: 1.25rem;
+		}
+
+		.tagline {
+			display: none;
 		}
 
 		.doc-info {
@@ -483,19 +485,14 @@
 			justify-content: center;
 		}
 
-		.meta-section {
-			flex-direction: column;
-			align-items: stretch;
-			text-align: center;
+		.chapter-section {
+			flex-wrap: wrap;
 		}
 
-		.chapter-select {
-			justify-content: center;
-		}
-
-		.chapter-select select {
+		.chapter-section select {
 			max-width: none;
 			flex: 1;
+			min-width: 150px;
 		}
 	}
 </style>
