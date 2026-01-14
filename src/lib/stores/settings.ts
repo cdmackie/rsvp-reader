@@ -17,6 +17,8 @@ export interface Settings {
 	pauseOnPunctuation: boolean;
 	punctuationDelayMultiplier: number;
 	longWordDelayMultiplier: number;
+	pauseOnNames: boolean;
+	nameDelayMultiplier: number;
 }
 
 const defaultSettings: Settings = {
@@ -26,7 +28,9 @@ const defaultSettings: Settings = {
 	fontFamily: DEFAULT_FONT_FAMILY,
 	pauseOnPunctuation: true,
 	punctuationDelayMultiplier: 1.5,
-	longWordDelayMultiplier: 1.2
+	longWordDelayMultiplier: 1.2,
+	pauseOnNames: true,
+	nameDelayMultiplier: 1.3
 };
 
 function createSettingsStore() {

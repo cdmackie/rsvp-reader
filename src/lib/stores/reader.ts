@@ -71,7 +71,9 @@ function createReaderStore() {
 			currentWord.text,
 			currentSettings.wpm,
 			currentSettings.pauseOnPunctuation ? currentSettings.punctuationDelayMultiplier : 1,
-			currentSettings.longWordDelayMultiplier
+			currentSettings.longWordDelayMultiplier,
+			10, // longWordThreshold
+			currentSettings.pauseOnNames ? currentSettings.nameDelayMultiplier : 1
 		);
 
 		playbackInterval = setTimeout(() => {

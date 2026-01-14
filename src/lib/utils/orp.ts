@@ -37,15 +37,42 @@ export function splitWordAtORP(word: string): { before: string; orp: string; aft
 }
 
 /**
+ * Check if a word looks like a proper name.
+ * Heuristic: starts with capital letter, not all caps (not an acronym),
+ * and has at least 2 letters.
+ */
+function looksLikeName(word: string): boolean {
+	if (word.length < 2) return false;
+
+	// Get just the alphabetic part (strip leading punctuation like quotes)
+	const alphaStart = word.search(/[a-zA-Z]/);
+	if (alphaStart === -1) return false;
+
+	const alphaWord = word.slice(alphaStart).replace(/[^a-zA-Z]/g, '');
+	if (alphaWord.length < 2) return false;
+
+	const firstLetter = alphaWord[0];
+
+	// Must start with uppercase
+	if (firstLetter !== firstLetter.toUpperCase()) return false;
+
+	// Must not be all uppercase (likely an acronym)
+	if (alphaWord === alphaWord.toUpperCase()) return false;
+
+	return true;
+}
+
+/**
  * Calculate display timing for a word based on WPM and word characteristics.
- * Adds extra time for punctuation and long words.
+ * Adds extra time for punctuation, long words, and names.
  */
 export function calculateWordDuration(
 	word: string,
 	wpm: number,
 	punctuationDelayMultiplier = 1.5,
 	longWordDelayMultiplier = 1.2,
-	longWordThreshold = 10
+	longWordThreshold = 10,
+	nameDelayMultiplier = 1.3
 ): number {
 	// Base duration in milliseconds
 	const baseDuration = 60000 / wpm;
@@ -62,6 +89,11 @@ export function calculateWordDuration(
 	// Extra time for long words
 	if (word.length >= longWordThreshold) {
 		duration *= longWordDelayMultiplier;
+	}
+
+	// Extra time for names/proper nouns
+	if (nameDelayMultiplier > 1 && looksLikeName(word)) {
+		duration *= nameDelayMultiplier;
 	}
 
 	return Math.round(duration);
