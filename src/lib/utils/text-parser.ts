@@ -20,6 +20,36 @@ export interface ParsedDocument {
 }
 
 /**
+ * Split a word on em-dashes and en-dashes, keeping the dash with the first word.
+ * "consciousness—seemed" becomes ["consciousness—", "seemed"]
+ */
+function splitOnDashes(word: string): string[] {
+	// Match em-dash (—) or en-dash (–)
+	const dashPattern = /(—|–)/;
+
+	if (!dashPattern.test(word)) {
+		return [word];
+	}
+
+	const result: string[] = [];
+	const parts = word.split(dashPattern);
+
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i];
+		if (part === '—' || part === '–') {
+			// Attach dash to previous word if exists
+			if (result.length > 0) {
+				result[result.length - 1] += part;
+			}
+		} else if (part.length > 0) {
+			result.push(part);
+		}
+	}
+
+	return result.filter(w => w.length > 0);
+}
+
+/**
  * Parse plain text into words with paragraph tracking.
  * Pages are estimated based on word count since plain text doesn't have pages.
  */
@@ -38,11 +68,14 @@ export function parseText(text: string, wordsPerPage = 250): ParsedDocument {
 		// Mark paragraph start
 		paragraphStarts.push(wordIndex);
 
-		// Split paragraph into words
-		const paragraphWords = paragraph
+		// Split paragraph into words, also splitting on em-dashes
+		const rawWords = paragraph
 			.trim()
 			.split(/\s+/)
 			.filter(w => w.length > 0);
+
+		// Further split words containing em-dashes or en-dashes
+		const paragraphWords = rawWords.flatMap(splitOnDashes);
 
 		paragraphWords.forEach(wordText => {
 			// Check if we need a new page

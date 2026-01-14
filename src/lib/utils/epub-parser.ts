@@ -2,6 +2,34 @@ import ePub, { type Book, type NavItem } from 'epubjs';
 import type { ParsedDocument, ParsedWord } from './text-parser';
 
 /**
+ * Split a word on em-dashes and en-dashes, keeping the dash with the first word.
+ * "consciousness—seemed" becomes ["consciousness—", "seemed"]
+ */
+function splitOnDashes(word: string): string[] {
+	const dashPattern = /(—|–)/;
+
+	if (!dashPattern.test(word)) {
+		return [word];
+	}
+
+	const result: string[] = [];
+	const parts = word.split(dashPattern);
+
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i];
+		if (part === '—' || part === '–') {
+			if (result.length > 0) {
+				result[result.length - 1] += part;
+			}
+		} else if (part.length > 0) {
+			result.push(part);
+		}
+	}
+
+	return result.filter(w => w.length > 0);
+}
+
+/**
  * Extended parsed document with EPUB-specific information.
  */
 export interface ParsedEpub extends ParsedDocument {
@@ -162,9 +190,11 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
 			for (const paragraph of sectionParagraphs) {
 				paragraphStarts.push(wordIndex);
 
-				const paragraphWords = paragraph
+				// Split on whitespace, then further split on em-dashes
+				const rawWords = paragraph
 					.split(/\s+/)
 					.filter(w => w.length > 0);
+				const paragraphWords = rawWords.flatMap(splitOnDashes);
 
 				for (const wordText of paragraphWords) {
 					// Check for page break (every 250 words)
