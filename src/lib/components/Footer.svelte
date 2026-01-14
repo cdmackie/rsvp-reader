@@ -20,7 +20,7 @@
 			<span class="divider">·</span>
 			<a href="https://github.com/cdmackie/quickreader" target="_blank" rel="noopener noreferrer">GitHub</a>
 		</nav>
-		<p class="copyright">© {new Date().getFullYear()} Colin Mackie. Open source under MIT License.</p>
+		<p class="copyright">© {new Date().getFullYear()} CoinsTax LLC. Open source under MIT License.</p>
 	</div>
 </footer>
 
