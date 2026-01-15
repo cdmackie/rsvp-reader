@@ -41,7 +41,24 @@
 			}
 
 			const blob = await response.blob();
-			const file = new File([blob], filename, { type: blob.type || 'text/plain' });
+			// Determine MIME type from extension if server doesn't provide one
+			let mimeType = blob.type;
+			if (!mimeType || mimeType === 'application/octet-stream') {
+				const ext = filename.split('.').pop()?.toLowerCase();
+				const mimeMap: Record<string, string> = {
+					'epub': 'application/epub+zip',
+					'pdf': 'application/pdf',
+					'mobi': 'application/x-mobipocket-ebook',
+					'azw': 'application/x-mobipocket-ebook',
+					'azw3': 'application/x-mobipocket-ebook',
+					'txt': 'text/plain',
+					'md': 'text/markdown',
+					'html': 'text/html',
+					'htm': 'text/html'
+				};
+				mimeType = mimeMap[ext || ''] || 'application/octet-stream';
+			}
+			const file = new File([blob], filename, { type: mimeType });
 
 			// Stop any active playback
 			reader.pause();
