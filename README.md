@@ -10,7 +10,7 @@ A web-based RSVP (Rapid Serial Visual Presentation) speed reader that displays t
 
 ## Features
 
-- **10+ File Formats** - EPUB, MOBI, FB2, PDF, DOCX, ODT, RTF, Markdown, HTML, TXT
+- **10+ File Formats** - EPUB, MOBI/AZW3, FB2, PDF, DOCX, ODT, RTF, Markdown, HTML, TXT
 - **ORP Highlighting** - Optimal Recognition Point letter highlighted for faster reading
 - **Adjustable Speed** - 100-900 WPM with real-time adjustment
 - **Smart Pauses** - Extra time on punctuation, long words, and names

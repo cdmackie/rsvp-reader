@@ -22,31 +22,48 @@ export interface ParsedDocument {
 }
 
 /**
+ * Result of merging orphaned punctuation.
+ * Includes the merged words and a mapping from original indices to merged indices.
+ */
+export interface MergeResult {
+	words: string[];
+	/** Maps each original word index to its merged word index */
+	indexMap: number[];
+}
+
+/**
  * Merge orphaned punctuation with adjacent words.
  * "the end ." becomes ["the", "end."]
  * "( some text )" becomes ["(some", "text)"]
  * "here ( something ), there" becomes ["here", "(something),", "there"]
+ *
+ * Returns both the merged words and an index map for tracking original positions.
  */
-export function mergeOrphanedPunctuation(words: string[]): string[] {
-	if (words.length === 0) return words;
+export function mergeOrphanedPunctuation(words: string[]): MergeResult {
+	if (words.length === 0) return { words: [], indexMap: [] };
 
 	const result: string[] = [];
+	const indexMap: number[] = new Array(words.length);
 	const leadingPunctuation = /^[(\[{"\u201C\u2018]+$/;  // Opening brackets/quotes
 	const trailingPunctuation = /^[)\]}"'\u201D\u2019.,;:!?]+$/;  // Closing brackets/quotes/punctuation
 
 	let i = 0;
 	while (i < words.length) {
 		const word = words[i];
+		const resultIndex = result.length;
 
 		// Check if this is leading punctuation that should attach to next word
 		if (leadingPunctuation.test(word) && i + 1 < words.length) {
 			// Attach to next word
 			let merged = word + words[i + 1];
+			indexMap[i] = resultIndex;
+			indexMap[i + 1] = resultIndex;
 			i += 2;
 
 			// Also check if there's trailing punctuation after that should attach
 			while (i < words.length && trailingPunctuation.test(words[i])) {
 				merged += words[i];
+				indexMap[i] = resultIndex;
 				i++;
 			}
 
@@ -58,9 +75,11 @@ export function mergeOrphanedPunctuation(words: string[]): string[] {
 		if (i + 1 < words.length && trailingPunctuation.test(words[i + 1])) {
 			// Attach all consecutive trailing punctuation to this word
 			let merged = word;
+			indexMap[i] = resultIndex;
 			i++;
 			while (i < words.length && trailingPunctuation.test(words[i])) {
 				merged += words[i];
+				indexMap[i] = resultIndex;
 				i++;
 			}
 			result.push(merged);
@@ -68,11 +87,19 @@ export function mergeOrphanedPunctuation(words: string[]): string[] {
 		}
 
 		// Standalone punctuation that couldn't be merged - still include it
+		indexMap[i] = resultIndex;
 		result.push(word);
 		i++;
 	}
 
-	return result;
+	return { words: result, indexMap };
+}
+
+/**
+ * Simple version that just returns merged words (for backward compatibility).
+ */
+export function mergeOrphanedPunctuationSimple(words: string[]): string[] {
+	return mergeOrphanedPunctuation(words).words;
 }
 
 /**

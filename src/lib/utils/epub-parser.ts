@@ -1,5 +1,6 @@
 import ePub, { type Book, type NavItem } from 'epubjs';
 import type { ParsedDocument, ParsedWord } from './text-parser';
+import { mergeOrphanedPunctuation } from './text-parser';
 
 /**
  * Content for a single chapter with word position markers for preview.
@@ -238,14 +239,167 @@ interface MarkedHtmlResult {
 }
 
 /**
+ * Extract all raw words from an element in document order.
+ * This is used to pre-compute the merged word list before injecting markers.
+ * Returns the raw words (after splitOnDashes) and whether each is from an image.
+ */
+function extractRawWordsFromElement(element: Element): { words: string[]; isImage: boolean[] } {
+	const words: string[] = [];
+	const isImage: boolean[] = [];
+
+	const walker = document.createTreeWalker(
+		element,
+		NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+		{
+			acceptNode: (node) => {
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					const tagName = (node as Element).tagName.toUpperCase();
+					if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
+						return NodeFilter.FILTER_ACCEPT;
+					}
+					if (tagName === 'SCRIPT' || tagName === 'STYLE') {
+						return NodeFilter.FILTER_REJECT;
+					}
+					return NodeFilter.FILTER_SKIP;
+				}
+				// Skip text nodes inside SVG elements
+				let parent = node.parentElement;
+				while (parent) {
+					if (parent.tagName.toUpperCase() === 'SVG') {
+						return NodeFilter.FILTER_REJECT;
+					}
+					parent = parent.parentElement;
+				}
+				return NodeFilter.FILTER_ACCEPT;
+			}
+		}
+	);
+
+	while (walker.nextNode()) {
+		const node = walker.currentNode;
+
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			const tagName = (node as Element).tagName.toUpperCase();
+			if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
+				// Images get a placeholder word entry
+				words.push('[IMAGE]');
+				isImage.push(true);
+			}
+			continue;
+		}
+
+		// Text node
+		const text = node.textContent || '';
+		if (!text.trim()) continue;
+
+		const parts = text.split(/\s+/).filter(w => w.length > 0);
+		for (const part of parts) {
+			const subWords = splitOnDashes(part);
+			for (const subWord of subWords) {
+				words.push(subWord);
+				isImage.push(false);
+			}
+		}
+	}
+
+	return { words, isImage };
+}
+
+/**
+ * Compute merged word indices for an element.
+ * Returns a mapping from raw word index to final (merged) word index.
+ *
+ * Images are NOT counted as separate words - they share the index of the
+ * nearest text word for page filtering purposes. This ensures the word count
+ * matches the text-only extraction used for the RSVP word array.
+ */
+function computeMergedIndices(element: Element, startWordIndex: number): {
+	mergedWords: string[];
+	rawToMergedIndex: number[];
+	isImage: boolean[];
+} {
+	const { words: rawWords, isImage } = extractRawWordsFromElement(element);
+
+	// Extract just text words (not images) for merging
+	const textWords: string[] = [];
+	for (let i = 0; i < rawWords.length; i++) {
+		if (!isImage[i]) {
+			textWords.push(rawWords[i]);
+		}
+	}
+
+	// Apply punctuation merging to text words only
+	const mergeResult = mergeOrphanedPunctuation(textWords);
+
+	// Build the raw-to-merged index mapping
+	// Images get the index of the nearest text word (preceding if available, else next)
+	const finalRawToMerged: number[] = new Array(rawWords.length);
+
+	let finalIdx = startWordIndex;
+	let prevMergedTextIdx = -1;
+	let textIdx = 0;
+	let lastTextWordIdx = startWordIndex; // Track the last text word index for images
+
+	for (let rawIdx = 0; rawIdx < rawWords.length; rawIdx++) {
+		if (isImage[rawIdx]) {
+			// Image - use the last text word's index (or startWordIndex if no text yet)
+			finalRawToMerged[rawIdx] = lastTextWordIdx;
+		} else {
+			// Text word
+			const mergedTextIdx = mergeResult.indexMap[textIdx];
+
+			if (mergedTextIdx !== prevMergedTextIdx) {
+				// This is a new merged word (not merged with previous)
+				finalRawToMerged[rawIdx] = finalIdx;
+				lastTextWordIdx = finalIdx;
+				finalIdx++;
+				prevMergedTextIdx = mergedTextIdx;
+			} else {
+				// This word was merged with the previous - use same index
+				finalRawToMerged[rawIdx] = finalIdx - 1;
+				lastTextWordIdx = finalIdx - 1;
+			}
+			textIdx++;
+		}
+	}
+
+	// If there were images before any text, update their indices to point to first text
+	if (textWords.length > 0) {
+		const firstTextIdx = startWordIndex;
+		for (let rawIdx = 0; rawIdx < rawWords.length; rawIdx++) {
+			if (isImage[rawIdx] && finalRawToMerged[rawIdx] === startWordIndex && rawIdx < rawWords.length - 1) {
+				// This image was before any text - keep pointing to first text word
+				finalRawToMerged[rawIdx] = firstTextIdx;
+			}
+			// Stop once we hit the first text word
+			if (!isImage[rawIdx]) break;
+		}
+	}
+
+	return {
+		mergedWords: mergeResult.words,  // Only text words (merged)
+		rawToMergedIndex: finalRawToMerged,
+		isImage
+	};
+}
+
+/**
  * Inject word index markers into an HTML element for preview highlighting.
  * Each word gets wrapped in <span data-word-index="N">.
  * Images also get data-word-index to track their position for page filtering.
+ *
+ * Uses two-pass approach:
+ * 1. First extracts all raw words and computes merged indices (handling punctuation merging)
+ * 2. Then injects markers using the pre-computed merged indices
+ *
+ * This ensures word indices in HTML match the merged word array used for RSVP display.
  */
 function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtmlResult {
+	// First pass: compute merged indices
+	const { mergedWords, rawToMergedIndex, isImage } = computeMergedIndices(element, startWordIndex);
+
 	// Clone to avoid mutating original
 	const clone = element.cloneNode(true) as Element;
-	let currentIndex = startWordIndex;
 	const imageSrcs: string[] = [];
 
 	// Collect image sources (case-insensitive for XHTML compatibility)
@@ -254,8 +408,10 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 		if (src) imageSrcs.push(src);
 	});
 
-	// Walk all nodes (text and elements) in document order to properly track
-	// the word index for images based on their position in the flow
+	// Track current raw word index as we walk the DOM
+	let rawWordIndex = 0;
+
+	// Walk all nodes (text and elements) in document order
 	const walker = document.createTreeWalker(
 		clone,
 		NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
@@ -263,13 +419,15 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 			acceptNode: (node) => {
 				if (node.nodeType === Node.ELEMENT_NODE) {
 					const tagName = (node as Element).tagName.toUpperCase();
-					// Accept img/image/svg elements for processing
 					if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
 						return NodeFilter.FILTER_ACCEPT;
 					}
+					if (tagName === 'SCRIPT' || tagName === 'STYLE') {
+						return NodeFilter.FILTER_REJECT;
+					}
 					return NodeFilter.FILTER_SKIP;
 				}
-				// Skip text nodes inside SVG elements (they shouldn't be indexed as words)
+				// Skip text nodes inside SVG elements
 				let parent = node.parentElement;
 				while (parent) {
 					if (parent.tagName.toUpperCase() === 'SVG') {
@@ -292,11 +450,10 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 		if (node.nodeType === Node.ELEMENT_NODE) {
 			const tagName = (node as Element).tagName.toUpperCase();
 			if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
-				// Mark image/SVG with current word index so it appears on the correct page
-				(node as Element).setAttribute('data-word-index', String(currentIndex));
-				// Increment word index for images so image-only chapters get their own word range
-				// This prevents overlapping word ranges between chapters
-				currentIndex++;
+				// Mark image/SVG with its merged index
+				const mergedIdx = rawToMergedIndex[rawWordIndex] ?? rawWordIndex + startWordIndex;
+				(node as Element).setAttribute('data-word-index', String(mergedIdx));
+				rawWordIndex++;
 				continue;
 			}
 		}
@@ -317,18 +474,22 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 				// Whitespace - preserve as-is
 				fragment.appendChild(document.createTextNode(part));
 			} else {
-				// Word - split on dashes/ellipsis and wrap each
+				// Word - split on dashes/ellipsis and wrap each with merged index
 				const subWords = splitOnDashes(part);
-				for (const subWord of subWords) {
+				for (let i = 0; i < subWords.length; i++) {
+					const subWord = subWords[i];
+					const mergedIdx = rawToMergedIndex[rawWordIndex] ?? rawWordIndex + startWordIndex;
+
 					const span = document.createElement('span');
-					span.setAttribute('data-word-index', String(currentIndex));
+					span.setAttribute('data-word-index', String(mergedIdx));
 					span.textContent = subWord;
 					fragment.appendChild(span);
+
 					// Add space between split words
-					if (subWord !== subWords[subWords.length - 1]) {
+					if (i < subWords.length - 1) {
 						fragment.appendChild(document.createTextNode(' '));
 					}
-					currentIndex++;
+					rawWordIndex++;
 				}
 			}
 		}
@@ -336,9 +497,12 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 		textNode.parentNode?.replaceChild(fragment, textNode);
 	}
 
+	// Return the count of merged words (not raw words)
+	const finalWordCount = mergedWords.length;
+
 	return {
 		html: clone.innerHTML,
-		wordCount: currentIndex - startWordIndex,
+		wordCount: finalWordCount,
 		imageSrcs
 	};
 }
@@ -739,53 +903,107 @@ export async function parseEpub(file: File, targetWordsPerPage = 250): Promise<P
 				markedWordCount = markedResult.wordCount;
 			}
 
-			// Process each paragraph block
+			// Process paragraph blocks with merging applied
+			// Collect all words from all paragraphs for this chapter
+			interface WordWithMeta {
+				text: string;
+				italic: boolean;
+				bold: boolean;
+				localParagraphIdx: number;  // 0-based within this chapter
+			}
+			const allChapterWords: WordWithMeta[] = [];
+			let localParagraphIdx = 0;
 			for (const block of paragraphBlocks) {
-				if (block.words.length === 0) continue;
-
-				// Mark paragraph start
-				paragraphStarts.push(wordIndex);
-
-				// Add all words in this paragraph
 				for (const fw of block.words) {
-					words.push({
+					allChapterWords.push({
 						text: fw.text,
+						italic: fw.italic,
+						bold: fw.bold,
+						localParagraphIdx
+					});
+				}
+				localParagraphIdx++;
+			}
+
+			// Apply punctuation merging across all text words in this chapter
+			// This matches what injectWordMarkers does
+			if (allChapterWords.length > 0) {
+				const rawTexts = allChapterWords.map(w => w.text);
+				const mergeResult = mergeOrphanedPunctuation(rawTexts);
+
+				// Track paragraph transitions based on merged indices
+				let prevMergedIdx = -1;
+				let prevLocalParagraphIdx = -1;
+
+				for (let rawIdx = 0; rawIdx < allChapterWords.length; rawIdx++) {
+					const mergedIdx = mergeResult.indexMap[rawIdx];
+					const wordMeta = allChapterWords[rawIdx];
+
+					// Skip if this raw word was merged into previous
+					if (mergedIdx === prevMergedIdx) {
+						prevLocalParagraphIdx = wordMeta.localParagraphIdx;
+						continue;
+					}
+
+					// New merged word - check if we're starting a new paragraph
+					if (wordMeta.localParagraphIdx !== prevLocalParagraphIdx || prevMergedIdx === -1) {
+						paragraphStarts.push(wordIndex);
+					}
+
+					const mergedText = mergeResult.words[mergedIdx];
+
+					words.push({
+						text: mergedText,
 						paragraphIndex,
 						pageIndex: currentPage,
-						italic: fw.italic || undefined,
-						bold: fw.bold || undefined
+						italic: wordMeta.italic || undefined,
+						bold: wordMeta.bold || undefined
 					});
 					wordIndex++;
 					wordsOnCurrentPage++;
+
+					// Check for page break at paragraph boundaries
+					if (wordMeta.localParagraphIdx !== prevLocalParagraphIdx && prevLocalParagraphIdx !== -1) {
+						paragraphIndex++;
+						// After each paragraph, check if we should start a new page
+						if (wordsOnCurrentPage >= targetWordsPerPage) {
+							currentPage++;
+							pageStarts.push(wordIndex);
+							wordsOnCurrentPage = 0;
+						}
+					}
+
+					prevMergedIdx = mergedIdx;
+					prevLocalParagraphIdx = wordMeta.localParagraphIdx;
 				}
 
-				paragraphIndex++;
-
-				// After each paragraph, check if we should start a new page
-				// Only break if we've exceeded the target word count
-				if (wordsOnCurrentPage >= targetWordsPerPage) {
-					currentPage++;
-					pageStarts.push(wordIndex);
-					wordsOnCurrentPage = 0;
+				// Increment paragraph index for the last paragraph
+				if (prevLocalParagraphIdx !== -1) {
+					paragraphIndex++;
 				}
 			}
 
-			// For image-only chapters (no text words), add placeholder entries
-			// This ensures the chapter has a unique word range and can be navigated to
+			// For image-only chapters (no text words), add a placeholder entry
+			// This ensures the chapter has a valid word range and can be navigated to
+			// Images share the index of this placeholder word
 			const textWordsAdded = wordIndex - chapterStartWord;
-			if (textWordsAdded === 0 && markedWordCount > 0) {
-				// Chapter has images but no text - add placeholder word entries for each image
+			if (textWordsAdded === 0 && imageSrcs.length > 0) {
+				// Chapter has images but no text - add ONE placeholder entry
 				paragraphStarts.push(wordIndex);
-				for (let i = 0; i < markedWordCount; i++) {
-					words.push({
-						text: '', // Empty text - will be skipped in RSVP display
-						paragraphIndex,
-						pageIndex: currentPage,
-					});
-					wordIndex++;
-					wordsOnCurrentPage++;
-				}
+				words.push({
+					text: '', // Empty text - will be skipped in RSVP display
+					paragraphIndex,
+					pageIndex: currentPage,
+				});
+				wordIndex++;
+				wordsOnCurrentPage++;
 				paragraphIndex++;
+
+				// Force a page break after image-only chapters so they get their own page
+				// This ensures the next chapter starts on a fresh page
+				currentPage++;
+				pageStarts.push(wordIndex);
+				wordsOnCurrentPage = 0;
 			}
 
 			// Resolve image URLs and build chapter content

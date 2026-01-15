@@ -26,7 +26,6 @@ export { mobiAdapter } from './mobi-adapter';
 
 // Import registry for registration
 import { registry } from './registry';
-import { mergeOrphanedPunctuation } from '../text-parser';
 
 // Import all adapters
 import { epubAdapter } from './epub-adapter';
@@ -55,7 +54,7 @@ registry.register(mobiAdapter);
 
 /**
  * Parse a file using the appropriate adapter.
- * Applies common post-processing (orphaned punctuation merging) to all parsed documents.
+ * Applies common post-processing (tiny page merging) to all parsed documents.
  * @param file The file to parse
  * @returns Promise with the parse result, or throws if no adapter found
  */
@@ -74,11 +73,20 @@ export async function parseFile(file: File) {
 
 	// Post-process: merge tiny pages (< 20 words of actual text)
 	// This prevents spine items like just "Prologue" or "I" from getting their own page
+	// But preserves pages for image-only chapters and chapter boundaries
 	if (result.document?.pageStarts?.length > 1 && result.document?.words?.length > 0) {
 		const minWordsPerPage = 20;
 		const pageStarts = result.document.pageStarts;
 		const words = result.document.words;
 		const totalWords = words.length;
+
+		// Get chapter start word indices to preserve as page boundaries
+		const chapterStartWords = new Set<number>();
+		if (result.preview?.chapters) {
+			for (const chapter of result.preview.chapters) {
+				chapterStartWords.add(chapter.wordStart);
+			}
+		}
 
 		// Calculate which pages to merge
 		const newPageStarts: number[] = [0];
@@ -90,15 +98,31 @@ export async function parseFile(file: File) {
 
 			// Count non-empty words on this page
 			let nonEmptyCount = 0;
+			let hasEmptyPlaceholder = false;
 			for (let i = pageStart; i <= pageEnd; i++) {
-				if (words[i]?.text?.trim()) nonEmptyCount++;
+				if (words[i]?.text?.trim()) {
+					nonEmptyCount++;
+				} else if (words[i]?.text === '') {
+					// Empty text indicates an image-only placeholder
+					hasEmptyPlaceholder = true;
+				}
 			}
 
 			currentMergedWordCount += nonEmptyCount;
 
-			// If we've accumulated enough words, this marks the end of a merged page
-			// Start a new merged page at the next original page boundary
-			if (currentMergedWordCount >= minWordsPerPage && pageIdx + 1 < pageStarts.length) {
+			// Check if the NEXT page starts a new chapter - if so, force a break here
+			const nextPageStart = pageIdx + 1 < pageStarts.length ? pageStarts[pageIdx + 1] : null;
+			const nextPageIsChapterStart = nextPageStart !== null && chapterStartWords.has(nextPageStart);
+
+			// Create a page break if:
+			// 1. We've accumulated enough words, OR
+			// 2. This page has image placeholders only, OR
+			// 3. The next page starts a new chapter (preserve chapter boundaries)
+			const shouldBreak = currentMergedWordCount >= minWordsPerPage ||
+				(hasEmptyPlaceholder && nonEmptyCount === 0) ||
+				nextPageIsChapterStart;
+
+			if (shouldBreak && pageIdx + 1 < pageStarts.length) {
 				newPageStarts.push(pageStarts[pageIdx + 1]);
 				currentMergedWordCount = 0;
 			}
@@ -121,141 +145,6 @@ export async function parseFile(file: File) {
 
 			result.document.pageStarts = newPageStarts;
 			result.document.totalPages = newPageStarts.length;
-		}
-	}
-
-	// Post-process: merge orphaned punctuation in words array
-	// This handles cases like "the end ." → "end." and "( text )" → "(text" "text)"
-	if (result.document?.words?.length > 0) {
-		const wordTexts = result.document.words.map(w => w.text);
-		const mergedTexts = mergeOrphanedPunctuation(wordTexts);
-
-		// If merging changed the count, rebuild the words array and update preview HTML
-		if (mergedTexts.length !== wordTexts.length) {
-			const newWords: typeof result.document.words = [];
-			// Map from old word index to new word index (or -1 if merged away)
-			const indexMap: number[] = new Array(wordTexts.length).fill(-1);
-			let srcIdx = 0;
-			let newIdx = 0;
-
-			for (const mergedText of mergedTexts) {
-				// Copy properties from source word, update text
-				const srcWord = result.document.words[srcIdx];
-				newWords.push({
-					...srcWord,
-					text: mergedText
-				});
-
-				// Map this source index to new index
-				indexMap[srcIdx] = newIdx;
-
-				// Skip source words that were merged
-				// Check if consecutive source words concatenate to form the merged word
-				let consumed = 1;
-				let concat = wordTexts[srcIdx];
-				while (srcIdx + consumed < wordTexts.length && consumed < 4) {
-					const nextConcat = concat + wordTexts[srcIdx + consumed];
-					if (nextConcat === mergedText) {
-						// Found the exact concatenation - mark all these as merged
-						for (let j = 1; j <= consumed; j++) {
-							indexMap[srcIdx + j] = newIdx;
-						}
-						consumed++;
-						break;
-					} else if (mergedText.startsWith(nextConcat)) {
-						// Still building up to the merged word
-						concat = nextConcat;
-						indexMap[srcIdx + consumed] = newIdx;
-						consumed++;
-					} else {
-						// Doesn't match, stop here
-						break;
-					}
-				}
-				srcIdx += consumed;
-				newIdx++;
-			}
-
-			result.document.words = newWords;
-			result.document.totalWords = newWords.length;
-
-			// Update preview HTML if present
-			if (result.preview?.chapterContents) {
-				result.preview.chapterContents = result.preview.chapterContents.map(chapter => {
-					// Update word indices in HTML and merge adjacent spans that now have the same index
-					let html = chapter.htmlWithMarkers;
-
-					// Replace data-word-index values with new indices
-					html = html.replace(/data-word-index="(\d+)"/g, (match, oldIdx) => {
-						const oldIndex = parseInt(oldIdx, 10);
-						const newIndex = indexMap[oldIndex];
-						if (newIndex !== undefined && newIndex >= 0) {
-							return `data-word-index="${newIndex}"`;
-						}
-						return match;
-					});
-
-					// Merge adjacent spans with the same data-word-index
-					// Pattern: </span> followed by whitespace/text then <span with same index
-					// We need to combine: <span data-word-index="5">word1</span> <span data-word-index="5">:</span>
-					// Into: <span data-word-index="5">word1:</span>
-					let prevHtml = '';
-					while (prevHtml !== html) {
-						prevHtml = html;
-						html = html.replace(
-							/<span data-word-index="(\d+)"[^>]*>([^<]*)<\/span>(\s*)<span data-word-index="\1"[^>]*>([^<]*)<\/span>/g,
-							'<span data-word-index="$1">$2$4</span>'
-						);
-					}
-
-					// Update word range
-					const [startOld, endOld] = chapter.wordRange;
-					const startNew = indexMap[startOld] ?? 0;
-					// Find the last valid mapped index for the end
-					let endNew = startNew;
-					for (let i = endOld; i >= startOld; i--) {
-						if (indexMap[i] !== undefined && indexMap[i] >= 0) {
-							endNew = indexMap[i];
-							break;
-						}
-					}
-
-					return {
-						...chapter,
-						htmlWithMarkers: html,
-						wordRange: [startNew, endNew] as [number, number]
-					};
-				});
-
-				// Update chapter starts if present
-				if (result.preview.chapterStarts) {
-					result.preview.chapterStarts = result.preview.chapterStarts.map(oldIdx => {
-						const newIndex = indexMap[oldIdx];
-						return newIndex !== undefined && newIndex >= 0 ? newIndex : oldIdx;
-					});
-				}
-
-				// Update chapters wordStart/wordEnd if present
-				// These are used for chapter navigation
-				if (result.preview.chapters) {
-					result.preview.chapters = result.preview.chapters.map(chapter => {
-						const newStart = indexMap[chapter.wordStart];
-						// Find the last valid mapped index for wordEnd
-						let newEnd = newStart ?? chapter.wordStart;
-						for (let i = chapter.wordEnd; i >= chapter.wordStart; i--) {
-							if (indexMap[i] !== undefined && indexMap[i] >= 0) {
-								newEnd = indexMap[i];
-								break;
-							}
-						}
-						return {
-							...chapter,
-							wordStart: newStart !== undefined && newStart >= 0 ? newStart : chapter.wordStart,
-							wordEnd: newEnd
-						};
-					});
-				}
-			}
 		}
 	}
 
