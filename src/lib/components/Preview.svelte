@@ -82,12 +82,22 @@
 		const htmlDoc = parser.parseFromString(chapter.htmlWithMarkers, 'text/html');
 
 		// Find all word spans and hide those outside page range
-		const wordSpans = htmlDoc.querySelectorAll('[data-word-index]');
+		// Exclude images - they should be visible for the entire page, not tied to a specific word
+		const wordSpans = htmlDoc.querySelectorAll('[data-word-index]:not(img)');
 		wordSpans.forEach(span => {
 			const idx = parseInt(span.getAttribute('data-word-index') || '', 10);
 			if (isNaN(idx) || idx < pageStart || idx > pageEnd) {
-				// Hide elements outside current page (words and images)
+				// Hide words outside current page
 				(span as HTMLElement).style.display = 'none';
+			}
+		});
+
+		// Handle images separately - show if their word index is within page range
+		const images = htmlDoc.querySelectorAll('img[data-word-index]');
+		images.forEach(img => {
+			const idx = parseInt(img.getAttribute('data-word-index') || '', 10);
+			if (isNaN(idx) || idx < pageStart || idx > pageEnd) {
+				(img as HTMLElement).style.display = 'none';
 			}
 		});
 
