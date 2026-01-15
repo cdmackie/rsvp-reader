@@ -234,6 +234,27 @@ export async function parseFile(file: File) {
 						return newIndex !== undefined && newIndex >= 0 ? newIndex : oldIdx;
 					});
 				}
+
+				// Update chapters wordStart/wordEnd if present
+				// These are used for chapter navigation
+				if (result.preview.chapters) {
+					result.preview.chapters = result.preview.chapters.map(chapter => {
+						const newStart = indexMap[chapter.wordStart];
+						// Find the last valid mapped index for wordEnd
+						let newEnd = newStart ?? chapter.wordStart;
+						for (let i = chapter.wordEnd; i >= chapter.wordStart; i--) {
+							if (indexMap[i] !== undefined && indexMap[i] >= 0) {
+								newEnd = indexMap[i];
+								break;
+							}
+						}
+						return {
+							...chapter,
+							wordStart: newStart !== undefined && newStart >= 0 ? newStart : chapter.wordStart,
+							wordEnd: newEnd
+						};
+					});
+				}
 			}
 		}
 	}
