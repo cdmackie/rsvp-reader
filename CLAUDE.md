@@ -1,6 +1,6 @@
 # QuickReader
 
-A web-based RSVP (Rapid Serial Visual Presentation) speed reader for PDFs, ebooks, and text content.
+A web-based RSVP (Rapid Serial Visual Presentation) speed reader for ebooks, documents, and text content.
 
 **Live site:** https://quickreader.app
 
@@ -13,17 +13,25 @@ This application displays text one word at a time using the Spritz-style ORP (Op
 - **Framework:** Svelte (SvelteKit for build tooling)
 - **Styling:** CSS (no external framework)
 - **Storage:** localStorage for progress persistence
-- **File Parsing:**
-  - EPUB: epub.js client-side library
-  - PDF: pdfjs-dist (Mozilla pdf.js)
-  - URL extraction: Backend service (future)
+- **File Parsing:** Adapter-based system supporting multiple formats
 
-## Core Features
+## Supported Formats
 
-### Input Sources
-- EPUB file upload and parsing
-- PDF file upload and parsing (with text extraction and rendered preview modes)
-- Plain text file upload
+### Ebooks
+- **EPUB** - Full chapter navigation, formatting, and images
+- **MOBI/AZW3** - Kindle format ebooks (DRM-free only)
+- **FB2** - FictionBook format
+
+### Documents
+- **PDF** - Text extraction with bookmark navigation
+- **DOCX** - Microsoft Word documents
+- **ODT** - OpenDocument text files
+- **RTF** - Rich Text Format
+
+### Text
+- **Markdown** - Formatted text with preview support (code blocks excluded from reading)
+- **HTML** - Web pages and HTML documents
+- **TXT** - Plain text files
 
 ### Future Input Sources
 - URL content extraction (requires backend)
@@ -156,6 +164,20 @@ rsvp/
 │   │   │   ├── settings.ts         # User preferences (includes preview settings)
 │   │   │   └── document.ts         # Loaded document data
 │   │   ├── utils/
+│   │   │   ├── adapters/           # File format adapter system
+│   │   │   │   ├── types.ts        # Adapter interfaces
+│   │   │   │   ├── registry.ts     # Adapter registry singleton
+│   │   │   │   ├── index.ts        # Exports + auto-registration
+│   │   │   │   ├── epub-adapter.ts
+│   │   │   │   ├── pdf-adapter.ts
+│   │   │   │   ├── text-adapter.ts
+│   │   │   │   ├── markdown-adapter.ts
+│   │   │   │   ├── html-adapter.ts
+│   │   │   │   ├── docx-adapter.ts
+│   │   │   │   ├── rtf-adapter.ts
+│   │   │   │   ├── odt-adapter.ts
+│   │   │   │   ├── fb2-adapter.ts
+│   │   │   │   └── mobi-adapter.ts
 │   │   │   ├── orp.ts              # ORP calculation + timing + name detection
 │   │   │   ├── epub-parser.ts      # EPUB parsing with formatting + preview HTML
 │   │   │   ├── pdf-parser.ts       # PDF parsing with pdf.js + preview content
@@ -164,7 +186,12 @@ rsvp/
 │   │   └── constants.ts            # Theme presets, speed limits, etc.
 ├── static/
 │   ├── robots.txt         # SEO: Allow all crawling
-│   └── sitemap.xml        # SEO: Page listing for search engines
+│   ├── sitemap.xml        # SEO: Page listing for search engines
+│   └── samples/           # Sample files for new users
+│       ├── welcome.txt
+│       ├── the-signal.epub
+│       ├── markdown-demo.md
+│       └── short-story.txt
 └── tests/                  # Future: component tests
 ```
 

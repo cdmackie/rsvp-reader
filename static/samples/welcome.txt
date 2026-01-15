@@ -1,0 +1,27 @@
+Welcome to QuickReader
+
+This is a speed reading application using RSVP - Rapid Serial Visual Presentation. Words are displayed one at a time at a fixed focal point, eliminating the need for eye movement across the page.
+
+How It Works
+
+The red letter in each word marks the Optimal Recognition Point. Your eye naturally focuses here, allowing faster word recognition. Keep your gaze fixed on this point and let the words flow.
+
+Getting Started
+
+Use the speed slider to adjust your reading pace. Most people start comfortably around 250-300 words per minute. As you practice, you can gradually increase to 400, 500, or even higher.
+
+The controls at the bottom let you play, pause, and navigate. Use the arrow keys for quick navigation - left and right move by word, and Page Up and Page Down jump between pages.
+
+Tips for Speed Reading
+
+Trust your brain. Even if words seem to flash by quickly, your mind is processing them. Resist the urge to subvocalize - that inner voice that "speaks" each word slows you down.
+
+Practice regularly. Like any skill, speed reading improves with consistent practice. Start with easier content and work up to more complex material.
+
+Take breaks. Speed reading requires concentration. Short, focused sessions are more effective than long, fatigued ones.
+
+Try It Now
+
+Press the play button or hit spacebar to begin. Watch the focal point and let the words come to you. You might be surprised how much you comprehend at higher speeds.
+
+Happy reading!

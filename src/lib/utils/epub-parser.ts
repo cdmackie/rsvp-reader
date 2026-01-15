@@ -262,12 +262,20 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 		{
 			acceptNode: (node) => {
 				if (node.nodeType === Node.ELEMENT_NODE) {
-					// Only accept img/image elements for processing (case-insensitive)
 					const tagName = (node as Element).tagName.toUpperCase();
-					if (tagName === 'IMG' || tagName === 'IMAGE') {
+					// Accept img/image/svg elements for processing
+					if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
 						return NodeFilter.FILTER_ACCEPT;
 					}
 					return NodeFilter.FILTER_SKIP;
+				}
+				// Skip text nodes inside SVG elements (they shouldn't be indexed as words)
+				let parent = node.parentElement;
+				while (parent) {
+					if (parent.tagName.toUpperCase() === 'SVG') {
+						return NodeFilter.FILTER_REJECT;
+					}
+					parent = parent.parentElement;
 				}
 				return NodeFilter.FILTER_ACCEPT;
 			}
@@ -283,8 +291,8 @@ function injectWordMarkers(element: Element, startWordIndex: number): MarkedHtml
 	for (const node of nodesToProcess) {
 		if (node.nodeType === Node.ELEMENT_NODE) {
 			const tagName = (node as Element).tagName.toUpperCase();
-			if (tagName === 'IMG' || tagName === 'IMAGE') {
-				// Mark image with current word index so it appears on the correct page
+			if (tagName === 'IMG' || tagName === 'IMAGE' || tagName === 'SVG') {
+				// Mark image/SVG with current word index so it appears on the correct page
 				(node as Element).setAttribute('data-word-index', String(currentIndex));
 				continue;
 			}

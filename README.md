@@ -10,7 +10,7 @@ A web-based RSVP (Rapid Serial Visual Presentation) speed reader that displays t
 
 ## Features
 
-- **EPUB, PDF & Text Support** - Load EPUB ebooks, PDF documents, or plain text files
+- **10+ File Formats** - EPUB, MOBI, FB2, PDF, DOCX, ODT, RTF, Markdown, HTML, TXT
 - **ORP Highlighting** - Optimal Recognition Point letter highlighted for faster reading
 - **Adjustable Speed** - 100-900 WPM with real-time adjustment
 - **Smart Pauses** - Extra time on punctuation, long words, and names
@@ -46,7 +46,7 @@ npm run dev
 npm run build
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and load an EPUB, PDF, or text file to start reading.
+Open [http://localhost:5173](http://localhost:5173) and load a file to start reading. Try the built-in samples or load your own ebooks and documents.
 
 ## Keyboard Shortcuts
 
@@ -99,15 +99,15 @@ src/
 │   │   ├── document.ts # Loaded document
 │   │   └── settings.ts # User preferences
 │   └── utils/          # Utilities
+│       ├── adapters/   # Format adapters (EPUB, PDF, DOCX, etc.)
 │       ├── orp.ts      # ORP calculation
-│       ├── epub-parser.ts
-│       ├── pdf-parser.ts
-│       └── text-parser.ts
-└── routes/
-    ├── +page.svelte    # Main reader page
-    ├── about/          # About RSVP technology
-    ├── help/           # Keyboard shortcuts & guide
-    └── privacy/        # Privacy policy
+│       └── *-parser.ts # Format-specific parsers
+├── routes/
+│   ├── +page.svelte    # Main reader page
+│   ├── about/          # About RSVP technology
+│   ├── help/           # Keyboard shortcuts & guide
+│   └── privacy/        # Privacy policy
+└── static/samples/     # Built-in sample files
 ```
 
 ## Contributing

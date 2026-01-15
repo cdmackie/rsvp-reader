@@ -9,12 +9,92 @@
 	import Preview from '$lib/components/Preview.svelte';
 
 	import { currentTheme, settings } from '$lib/stores/settings';
-	import { documentStore, isDocumentLoaded, epubTitle, epubAuthor, isEpub, chapters } from '$lib/stores/document';
+	import { documentStore, isDocumentLoaded, isDocumentLoading, documentFileName, epubTitle, epubAuthor, isEpub, chapters } from '$lib/stores/document';
 	import { reader, currentChapter } from '$lib/stores/reader';
 	import { WPM_STEP, MIN_WPM, MAX_WPM } from '$lib/constants';
+	import { parseFile } from '$lib/utils/adapters';
+	import { generateFileKey, addRecentFile } from '$lib/utils/storage';
 
 	let settingsOpen = $state(false);
 	let mounted = $state(false);
+	let loadingSample = $state<string | null>(null);
+
+	// Sample files available for first-time users
+	const sampleFiles = [
+		{ name: 'welcome.txt', title: 'QuickReader Guide', description: 'Learn how to use RSVP speed reading' },
+		{ name: 'the-signal.epub', title: 'The Signal (EPUB)', description: 'A sci-fi story with chapters' },
+		{ name: 'markdown-demo.md', title: 'Markdown Demo', description: 'See how formatted text works' },
+		{ name: 'short-story.txt', title: 'Short Story', description: 'A brief tale to practice with' }
+	];
+
+	// Set of sample file names for quick lookup
+	const sampleFileNames = new Set(sampleFiles.map(s => s.name));
+
+	async function loadSampleFile(filename: string) {
+		if (loadingSample) return;
+		loadingSample = filename;
+
+		try {
+			const response = await fetch(`/samples/${filename}`);
+			if (!response.ok) {
+				throw new Error(`Failed to load sample: ${response.statusText}`);
+			}
+
+			const blob = await response.blob();
+			const file = new File([blob], filename, { type: blob.type || 'text/plain' });
+
+			// Stop any active playback
+			reader.pause();
+			documentStore.setLoading(file.name);
+
+			// Generate unique file key
+			const fileKey = generateFileKey(file.name, file.size);
+
+			// Parse file using adapter system
+			const result = await parseFile(file);
+
+			// Determine file type from extra data
+			const fileType = (result.extra?.fileType as import('$lib/stores/document').FileType) || 'text';
+
+			// Validate document has content
+			if (!result.document.words || result.document.words.length === 0) {
+				throw new Error('The file appears to be empty or contains no readable text.');
+			}
+
+			// Build the parsed document structure
+			const parsedDocument = {
+				...result.document,
+				title: result.title,
+				author: result.author,
+				parseWarnings: result.warnings,
+				...(result.preview ? {
+					chapters: result.preview.chapters,
+					chapterStarts: result.preview.chapterStarts,
+					chapterContents: result.preview.chapterContents
+				} : {})
+			};
+
+			// Set the document in store
+			documentStore.setDocument(parsedDocument, file.name, fileKey, fileType);
+
+			// Reset to beginning for sample files
+			reader.setWordIndex(0);
+
+			// Add to recent files
+			addRecentFile({
+				name: file.name,
+				fileKey,
+				lastOpened: Date.now(),
+				totalWords: result.document.totalWords
+			});
+		} catch (err) {
+			const errorMessage = err instanceof Error ? err.message : 'Failed to load sample file';
+			documentStore.setError(errorMessage);
+			console.error('Sample file loading error:', err);
+		} finally {
+			loadingSample = null;
+		}
+	}
 
 	// Get current values from stores
 	const theme = $derived($currentTheme);
@@ -27,6 +107,8 @@
 	const currentWpm = $derived($settings.wpm);
 	const previewVisible = $derived($settings.previewVisible);
 	const previewWidth = $derived($settings.previewWidth);
+	const currentFileName = $derived($documentFileName);
+	const isSampleFile = $derived(currentFileName ? sampleFileNames.has(currentFileName) : false);
 
 	onMount(() => {
 		mounted = true;
@@ -153,8 +235,39 @@
 		{#if !docLoaded}
 			<div class="welcome">
 				<h2>Welcome to QuickReader</h2>
-				<p>Load an EPUB, PDF, or text file to start speed reading.</p>
-				<p class="hint">Click "Open File" above to get started.</p>
+				<p>Load ebooks, documents, or text files to start speed reading.</p>
+				<p class="hint">Click "Open File" above or try a sample below.</p>
+
+				<div class="sample-files">
+					<h3>Try a Sample</h3>
+					<div class="sample-grid">
+						{#each sampleFiles as sample}
+							<button
+								type="button"
+								class="sample-card"
+								onclick={() => loadSampleFile(sample.name)}
+								disabled={loadingSample !== null}
+							>
+								{#if loadingSample === sample.name}
+									<span class="sample-spinner"></span>
+								{:else}
+									<span class="sample-icon">
+										{#if sample.name.endsWith('.epub')}
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+										{:else if sample.name.endsWith('.md')}
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+										{:else}
+											<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
+										{/if}
+									</span>
+								{/if}
+								<span class="sample-title">{sample.title}</span>
+								<span class="sample-desc">{sample.description}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+
 				<div class="keyboard-hints">
 					<h3>Keyboard Shortcuts</h3>
 					<ul>
@@ -193,6 +306,28 @@
 						<div class="speed-section">
 							<SpeedSlider />
 						</div>
+
+						{#if isSampleFile}
+							<div class="sample-switcher">
+								<span class="sample-switcher-label">Try another sample:</span>
+								<div class="sample-switcher-buttons">
+									{#each sampleFiles as sample}
+										<button
+											type="button"
+											class="sample-switch-btn"
+											class:active={currentFileName === sample.name}
+											onclick={() => loadSampleFile(sample.name)}
+											disabled={loadingSample !== null || currentFileName === sample.name}
+										>
+											{#if loadingSample === sample.name}
+												<span class="sample-switch-spinner"></span>
+											{/if}
+											{sample.title}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					</div>
 				</div>
 
@@ -342,6 +477,141 @@
 	.welcome .hint {
 		margin-top: 1.5rem;
 		font-size: 0.95rem;
+	}
+
+	.sample-files {
+		margin-top: 2rem;
+		text-align: left;
+	}
+
+	.sample-files h3 {
+		font-size: 1rem;
+		margin-bottom: 1rem;
+		opacity: 0.9;
+		text-align: center;
+	}
+
+	.sample-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 1rem;
+	}
+
+	.sample-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 1.25rem 1rem;
+		background: var(--color-controls-bg);
+		border: 1px solid var(--color-guide);
+		border-radius: 0.75rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		text-align: center;
+		font-family: inherit;
+		color: var(--color-text);
+	}
+
+	.sample-card:hover:not(:disabled) {
+		border-color: var(--color-orp);
+		transform: translateY(-2px);
+	}
+
+	.sample-card:active:not(:disabled) {
+		transform: translateY(0);
+	}
+
+	.sample-card:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.sample-icon {
+		opacity: 0.7;
+	}
+
+	.sample-title {
+		font-weight: 600;
+		font-size: 0.95rem;
+	}
+
+	.sample-desc {
+		font-size: 0.8rem;
+		opacity: 0.7;
+	}
+
+	.sample-spinner {
+		display: inline-block;
+		width: 24px;
+		height: 24px;
+		border: 2px solid var(--color-guide);
+		border-top-color: var(--color-orp);
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	/* Sample switcher in reader view */
+	.sample-switcher {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-guide);
+	}
+
+	.sample-switcher-label {
+		font-size: 0.85rem;
+		opacity: 0.7;
+	}
+
+	.sample-switcher-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
+	.sample-switch-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		font-size: 0.8rem;
+		font-family: inherit;
+		background: var(--color-controls-bg);
+		color: var(--color-text);
+		border: 1px solid var(--color-guide);
+		border-radius: 1rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.sample-switch-btn:hover:not(:disabled) {
+		border-color: var(--color-orp);
+	}
+
+	.sample-switch-btn.active {
+		background: var(--color-orp);
+		color: var(--color-bg);
+		border-color: var(--color-orp);
+		cursor: default;
+	}
+
+	.sample-switch-btn:disabled:not(.active) {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.sample-switch-spinner {
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		border: 2px solid currentColor;
+		border-right-color: transparent;
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
 	}
 
 	.keyboard-hints {

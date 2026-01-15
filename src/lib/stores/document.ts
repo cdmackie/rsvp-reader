@@ -4,13 +4,16 @@ import type { ParsedEpub, ChapterInfo, ParsedEpubWithContent } from '../utils/ep
 import { cleanupEpubResources } from '../utils/epub-parser';
 import type { ParsedPdf, PdfOutlineItem } from '../utils/pdf-parser';
 
+// Supported file types - can be extended by adapters
+export type FileType = 'text' | 'epub' | 'pdf' | 'markdown' | 'html' | 'fb2' | 'docx' | 'rtf' | 'odt' | 'mobi';
+
 export interface DocumentState {
 	loaded: boolean;
 	loading: boolean;
 	error: string | null;
 	fileName: string;
 	fileKey: string;
-	fileType: 'text' | 'epub' | 'pdf' | null;
+	fileType: FileType | null;
 	document: ParsedDocument | ParsedEpub | ParsedPdf | null;
 }
 
@@ -68,7 +71,7 @@ function createDocumentStore() {
 			document: ParsedDocument | ParsedEpub | ParsedPdf,
 			fileName: string,
 			fileKey: string,
-			fileType: 'text' | 'epub' | 'pdf'
+			fileType: FileType
 		) => {
 			// Clean up previous document's blob URLs if it was an EPUB
 			if (currentDocument && 'chapterContents' in currentDocument) {

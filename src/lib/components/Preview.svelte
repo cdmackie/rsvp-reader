@@ -52,17 +52,24 @@
 		return [startIdx, endIdx];
 	});
 
-	// For EPUB: Get current chapter's HTML and filter to current page
-	const epubPageHtml = $derived.by((): string | null => {
-		if (!doc.document || doc.fileType !== 'epub' || !pageBounds) return null;
+	// Check if document has chapterContents (EPUB, Markdown, FB2, HTML, etc.)
+	const hasChapterContents = $derived.by((): boolean => {
+		if (!doc.document) return false;
+		const docWithChapters = doc.document as ParsedEpubWithContent;
+		return !!docWithChapters.chapterContents && docWithChapters.chapterContents.length > 0;
+	});
 
-		const epubDoc = doc.document as ParsedEpubWithContent;
-		if (!epubDoc.chapterContents) return null;
+	// For formats with chapterContents: Get current chapter's HTML and filter to current page
+	const chapterPageHtml = $derived.by((): string | null => {
+		if (!doc.document || doc.fileType === 'pdf' || !pageBounds || !hasChapterContents) return null;
+
+		const docWithChapters = doc.document as ParsedEpubWithContent;
+		if (!docWithChapters.chapterContents) return null;
 
 		const [pageStart, pageEnd] = pageBounds;
 
 		// Find chapter containing CURRENT WORD (not page start)
-		const chapter = epubDoc.chapterContents.find(
+		const chapter = docWithChapters.chapterContents.find(
 			c => wordIndex >= c.wordRange[0] && wordIndex <= c.wordRange[1]
 		);
 
@@ -92,11 +99,11 @@
 		});
 
 		// Remove empty paragraphs/elements that have no visible content
-		// BUT preserve elements that contain visible images (for image-only pages like covers)
-		const allElements = htmlDoc.body.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, div');
+		// BUT preserve elements that contain visible images/SVGs (for image-only pages like covers)
+		const allElements = htmlDoc.body.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, div, blockquote, section, article');
 		allElements.forEach(el => {
 			const visibleWords = el.querySelectorAll('[data-word-index]:not([style*="display: none"])');
-			const visibleImages = el.querySelectorAll('img:not([style*="display: none"])');
+			const visibleImages = el.querySelectorAll('img:not([style*="display: none"]), svg:not([style*="display: none"])');
 			if (visibleWords.length === 0 && visibleImages.length === 0) {
 				(el as HTMLElement).style.display = 'none';
 			}
@@ -141,23 +148,24 @@
 		return sortedParas.map(([_, wordList]) => `<p>${wordList.join(' ')}</p>`).join('\n');
 	});
 
-	// For PDF: Get current page's HTML from pageContents
+	// For PDF: Get current page's HTML from chapterContents (unified with EPUB after adapter refactor)
 	const pdfPageHtml = $derived.by((): string | null => {
 		if (!doc.document || doc.fileType !== 'pdf' || !pageBounds) return null;
 
-		const pdfDoc = doc.document as ParsedPdf;
-		if (!pdfDoc.pageContents) return null;
+		// After the adapter refactor, PDF uses chapterContents like EPUB
+		const pdfDoc = doc.document as ParsedEpubWithContent;
+		if (!pdfDoc.chapterContents) return null;
 
 		// Find page content for current page
-		const pageContent = pdfDoc.pageContents.find(
-			p => wordIndex >= p.wordRange[0] && wordIndex <= p.wordRange[1]
+		const pageContent = pdfDoc.chapterContents.find(
+			c => wordIndex >= c.wordRange[0] && wordIndex <= c.wordRange[1]
 		);
 
 		return pageContent?.htmlWithMarkers || null;
 	});
 
-	// Combined preview HTML
-	const pagePreviewHtml = $derived(epubPageHtml || pdfPageHtml || textPageHtml);
+	// Combined preview HTML (chapterPageHtml handles EPUB, Markdown, FB2, HTML, etc.)
+	const pagePreviewHtml = $derived(chapterPageHtml || pdfPageHtml || textPageHtml);
 
 	// Escape HTML special characters
 	function escapeHtml(text: string): string {
@@ -618,6 +626,89 @@
 
 	.page-box :global(p:last-child) {
 		margin-bottom: 0;
+	}
+
+	/* Header styling */
+	.page-box :global(h1),
+	.page-box :global(h2),
+	.page-box :global(h3),
+	.page-box :global(h4),
+	.page-box :global(h5),
+	.page-box :global(h6) {
+		margin: 1.5em 0 0.5em 0;
+		font-weight: 600;
+		line-height: 1.3;
+	}
+
+	.page-box :global(h1) { font-size: 1.5em; }
+	.page-box :global(h2) { font-size: 1.3em; }
+	.page-box :global(h3) { font-size: 1.15em; }
+	.page-box :global(h4),
+	.page-box :global(h5),
+	.page-box :global(h6) { font-size: 1em; }
+
+	.page-box :global(h1:first-child),
+	.page-box :global(h2:first-child),
+	.page-box :global(h3:first-child) {
+		margin-top: 0;
+	}
+
+	/* Code styling */
+	.page-box :global(code) {
+		font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+		font-size: 0.85em;
+		background: rgba(128, 128, 128, 0.15);
+		padding: 0.15em 0.4em;
+		border-radius: 3px;
+	}
+
+	.page-box :global(pre) {
+		background: rgba(0, 0, 0, 0.3);
+		padding: 1em;
+		border-radius: 6px;
+		overflow-x: auto;
+		margin: 1em 0;
+	}
+
+	.page-box :global(pre code) {
+		background: none;
+		padding: 0;
+		font-size: 0.8em;
+		line-height: 1.5;
+		white-space: pre;
+	}
+
+	/* Blockquote styling */
+	.page-box :global(blockquote) {
+		margin: 1em 0;
+		padding: 0.5em 1em;
+		border-left: 3px solid var(--orp-color);
+		background: rgba(128, 128, 128, 0.1);
+		font-style: italic;
+	}
+
+	/* List styling */
+	.page-box :global(ul),
+	.page-box :global(ol) {
+		margin: 0.5em 0;
+		padding-left: 1.5em;
+	}
+
+	.page-box :global(li) {
+		margin: 0.25em 0;
+	}
+
+	/* Link styling */
+	.page-box :global(a) {
+		color: var(--orp-color);
+		text-decoration: underline;
+	}
+
+	/* Horizontal rule */
+	.page-box :global(hr) {
+		border: none;
+		border-top: 1px solid var(--guide-color);
+		margin: 1.5em 0;
 	}
 
 	/* Image styling - fit within preview box */

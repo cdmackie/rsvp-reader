@@ -3,9 +3,7 @@
 	import { documentStore, isDocumentLoading, documentError, parseWarnings, setPdfDocumentCache } from '../stores/document';
 	import { reader } from '../stores/reader';
 	import { currentTheme } from '../stores/settings';
-	import { parseEpub, type ParsedEpub } from '../utils/epub-parser';
-	import { parseText } from '../utils/text-parser';
-	import type { ParsedPdf } from '../utils/pdf-parser';
+	import { parseFile, getAcceptString } from '../utils/adapters';
 	import { generateFileKey, addRecentFile, saveLastFile, loadLastFile } from '../utils/storage';
 
 	// Derived store values
@@ -13,6 +11,9 @@
 	const error = $derived($documentError);
 	const theme = $derived($currentTheme);
 	const warnings = $derived($parseWarnings);
+
+	// Get accept string from adapters
+	const acceptString = getAcceptString();
 
 	// Local state
 	let fileInput: HTMLInputElement | undefined = $state();
@@ -48,56 +49,24 @@
 			// Generate unique file key
 			const fileKey = generateFileKey(file.name, file.size);
 
-			// Detect file type by extension
-			const extension = file.name.toLowerCase().split('.').pop();
+			// Parse file using adapter system
+			const result = await parseFile(file);
 
-			let parsedDocument;
-			let fileType: 'text' | 'epub' | 'pdf';
+			// Determine file type from extra data (import FileType from document store)
+			const fileType = (result.extra?.fileType as import('../stores/document').FileType) || 'text';
 
-			// Parse based on file type
-			if (extension === 'epub') {
-				parsedDocument = await parseEpub(file);
-				fileType = 'epub';
-			} else if (extension === 'pdf') {
-				// Dynamic import to avoid SSR issues (pdf.js uses browser APIs)
-				const { parsePdf } = await import('../utils/pdf-parser');
-				const pdfResult = await parsePdf(file);
-				parsedDocument = pdfResult.parsed;
-				fileType = 'pdf';
-				// Cache the PDF document for rendered preview mode
-				if (pdfResult.pdfDocument) {
-					setPdfDocumentCache(pdfResult.pdfDocument, fileKey);
-				}
-			} else if (extension === 'txt') {
-				const text = await file.text();
-				parsedDocument = parseText(text);
-				fileType = 'text';
-			} else {
-				throw new Error(`Unsupported file type: ${extension}`);
+			// Handle PDF document caching
+			if (fileType === 'pdf' && result.extra?.pdfDocument) {
+				setPdfDocumentCache(result.extra.pdfDocument, fileKey);
 			}
 
 			// Check for parse warnings
-			let hasWarnings = false;
-			let warningMessages: string[] = [];
-
-			if (fileType === 'epub') {
-				const epubDoc = parsedDocument as ParsedEpub;
-				if (epubDoc.parseWarnings && epubDoc.parseWarnings.length > 0) {
-					hasWarnings = true;
-					warningMessages = epubDoc.parseWarnings;
-				}
-			} else if (fileType === 'pdf') {
-				const pdfDoc = parsedDocument as ParsedPdf;
-				if (pdfDoc.parseWarnings && pdfDoc.parseWarnings.length > 0) {
-					hasWarnings = true;
-					warningMessages = pdfDoc.parseWarnings;
-				}
-			}
+			const hasWarnings = result.warnings.length > 0;
 
 			// Validate document has content
-			if (!parsedDocument.words || parsedDocument.words.length === 0) {
-				if (hasWarnings && warningMessages.length > 0) {
-					throw new Error(warningMessages.join(' '));
+			if (!result.document.words || result.document.words.length === 0) {
+				if (hasWarnings) {
+					throw new Error(result.warnings.join(' '));
 				}
 				throw new Error('The file appears to be empty or contains no readable text.');
 			}
@@ -106,6 +75,21 @@
 			if (hasWarnings) {
 				showWarnings = true;
 			}
+
+			// Build the parsed document structure expected by the store
+			// Include preview data if available
+			const parsedDocument = {
+				...result.document,
+				title: result.title,
+				author: result.author,
+				parseWarnings: result.warnings,
+				// Include preview-related data for EPUB and other formats
+				...(result.preview ? {
+					chapters: result.preview.chapters,
+					chapterStarts: result.preview.chapterStarts,
+					chapterContents: result.preview.chapterContents
+				} : {})
+			};
 
 			// Set the document in store
 			documentStore.setDocument(parsedDocument, file.name, fileKey, fileType);
@@ -121,7 +105,7 @@
 				name: file.name,
 				fileKey,
 				lastOpened: Date.now(),
-				totalWords: parsedDocument.totalWords
+				totalWords: result.document.totalWords
 			});
 
 			// Save file to IndexedDB for auto-reload on refresh
@@ -164,10 +148,10 @@
 <input
 	bind:this={fileInput}
 	type="file"
-	accept=".epub,.txt,.pdf"
+	accept={acceptString}
 	onchange={handleFileSelect}
 	class="hidden"
-	aria-label="Select EPUB, PDF, or text file"
+	aria-label="Select a document file"
 />
 
 <div class="file-loader">
@@ -198,7 +182,7 @@
 			<div class="warning-content">
 				<span class="warning-icon" aria-hidden="true">⚠</span>
 				<span class="warning-text">
-					{warnings.length} chapter{warnings.length > 1 ? 's' : ''} had parsing issues
+					{warnings.length} issue{warnings.length > 1 ? 's' : ''} during parsing
 				</span>
 				<button
 					type="button"

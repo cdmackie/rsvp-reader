@@ -6,7 +6,7 @@
 
 <svelte:head>
 	<title>About QuickReader - RSVP Speed Reading Technology</title>
-	<meta name="description" content="Learn how QuickReader uses RSVP (Rapid Serial Visual Presentation) and ORP technology to help you read faster. Speed read EPUBs, PDFs, and text files." />
+	<meta name="description" content="Learn how QuickReader uses RSVP (Rapid Serial Visual Presentation) and ORP technology to help you read faster. Speed read ebooks and documents in EPUB, PDF, MOBI, DOCX, and more." />
 </svelte:head>
 
 <div
@@ -50,9 +50,23 @@
 
 		<section>
 			<h2>Supported File Formats</h2>
+			<h3>Ebooks</h3>
 			<ul>
-				<li><strong>EPUB:</strong> E-books with full chapter navigation and formatting support</li>
-				<li><strong>PDF:</strong> Documents with text extraction and bookmark navigation</li>
+				<li><strong>EPUB:</strong> Full chapter navigation, formatting, and images</li>
+				<li><strong>MOBI/AZW3:</strong> Kindle format ebooks (DRM-free)</li>
+				<li><strong>FB2:</strong> FictionBook format popular in many regions</li>
+			</ul>
+			<h3>Documents</h3>
+			<ul>
+				<li><strong>PDF:</strong> Text extraction with bookmark navigation</li>
+				<li><strong>DOCX:</strong> Microsoft Word documents</li>
+				<li><strong>ODT:</strong> OpenDocument text files</li>
+				<li><strong>RTF:</strong> Rich Text Format</li>
+			</ul>
+			<h3>Text</h3>
+			<ul>
+				<li><strong>Markdown:</strong> Formatted text with preview support</li>
+				<li><strong>HTML:</strong> Web pages and HTML documents</li>
 				<li><strong>TXT:</strong> Plain text files</li>
 			</ul>
 		</section>
@@ -103,6 +117,13 @@
 		margin-top: 2.5rem;
 		margin-bottom: 1rem;
 		color: var(--color-orp);
+	}
+
+	h3 {
+		font-size: 1.1rem;
+		margin-top: 1.5rem;
+		margin-bottom: 0.5rem;
+		opacity: 0.85;
 	}
 
 	section {

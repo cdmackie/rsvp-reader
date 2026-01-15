@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <author>
+        <first-name>Test</first-name>
+        <last-name>Author</last-name>
+      </author>
+      <book-title>Sample FB2 Book</book-title>
+    </title-info>
+  </description>
+  <body>
+    <section>
+      <title><p>Chapter 1: Introduction</p></title>
+      <p>This is a <emphasis>sample FB2 document</emphasis> for testing the QuickReader application. FB2 (FictionBook) is a popular ebook format, especially in Russia and Eastern Europe.</p>
+      <p>The format uses XML to structure book content, making it easy to parse while preserving formatting like <strong>bold</strong> and <emphasis>italic</emphasis> text.</p>
+      <empty-line/>
+      <p>FB2 files can contain chapters, sections, and various formatting elements that are commonly found in books.</p>
+    </section>
+    <section>
+      <title><p>Chapter 2: Speed Reading</p></title>
+      <p>RSVP technology revolutionizes how we read by displaying words one at a time. This eliminates the need for eye movement, which is one of the main bottlenecks in traditional reading.</p>
+      <p>With practice, readers can achieve speeds of 500 words per minute or more while maintaining good comprehension.</p>
+      <cite>
+        <p>"A reader lives a thousand lives before he dies. The man who never reads lives only one."</p>
+        <text-author>George R.R. Martin</text-author>
+      </cite>
+    </section>
+    <section>
+      <title><p>Chapter 3: Conclusion</p></title>
+      <p>Thank you for testing the FB2 adapter! This format is now fully supported by QuickReader.</p>
+    </section>
+  </body>
+</FictionBook>

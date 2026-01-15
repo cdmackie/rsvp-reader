@@ -1,0 +1,9 @@
+The Quick Brown Fox
+
+This is a simple plain text file for testing the QuickReader application. It contains multiple paragraphs to verify that paragraph detection works correctly.
+
+Speed reading with RSVP technology allows you to read much faster than traditional methods. The Optimal Recognition Point (ORP) technique highlights the letter your eye naturally focuses on, eliminating the need for eye movement across the page.
+
+Here is another paragraph with some longer words like "extraordinary" and "comprehensibility" to test the timing adjustments for long words.
+
+The final paragraph includes punctuation: commas, periods, and exclamation marks! These should trigger pause multipliers.
