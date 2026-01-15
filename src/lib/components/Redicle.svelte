@@ -163,7 +163,6 @@
 
 	.orp-letter {
 		color: var(--orp-color);
-		font-weight: 700;
 		/* ORP letter is the fixed center point */
 		text-align: center;
 	}
@@ -185,9 +184,6 @@
 		font-weight: 700;
 	}
 
-	.word-display.bold .orp-letter {
-		font-weight: 900;
-	}
 
 	@media (max-width: 768px) {
 		.redicle-container {
