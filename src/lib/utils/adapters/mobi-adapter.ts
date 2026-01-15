@@ -269,7 +269,10 @@ function parseMobiContent(
 
 				if (blobUrl) {
 					const alt = el.getAttribute('alt') || 'Image';
-					currentChapterHtml.push(`<img src="${blobUrl}" alt="${escapeHtml(alt)}" style="max-width: 100%; height: auto;" />`);
+					// Add data-word-index so Preview can filter by page
+					// Use current wordIndex so image appears on the correct page
+					const imageWordIdx = wordIndex > 0 ? wordIndex - 1 : 0;
+					currentChapterHtml.push(`<img src="${blobUrl}" alt="${escapeHtml(alt)}" data-word-index="${imageWordIdx}" data-original-src="${escapeHtml(src || recindex || '')}" style="max-width: 100%; height: auto;" />`);
 					// Track image URL for cleanup
 					chapterImageUrls.set(src || recindex || '', blobUrl);
 				}
