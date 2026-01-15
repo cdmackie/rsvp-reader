@@ -36,3 +36,9 @@ coverage/
 
 # Test files
 *.epub
+*.pdf
+test-files/
+scripts/
+
+# Windows zone identifier files
+*:Zone.Identifier
