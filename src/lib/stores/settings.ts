@@ -149,9 +149,14 @@ export const currentTheme = derived(settings, ($settings): Theme => {
 
 	// Apply custom ORP color if set
 	if ($settings.customOrpColor) {
+		// Special value 'match-text' means use the theme's text color
+		const orpColor = $settings.customOrpColor === 'match-text'
+			? baseTheme.text
+			: $settings.customOrpColor;
+
 		return {
 			...baseTheme,
-			orp: $settings.customOrpColor
+			orp: orpColor
 		};
 	}
 

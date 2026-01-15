@@ -112,14 +112,18 @@
 	}
 
 	function setOrpToTextColor() {
-		settings.setCustomOrpColor(theme.text);
+		settings.setCustomOrpColor('match-text');
 	}
 
 	// Get the default ORP color from the current theme (without custom override)
 	const defaultOrpColor = $derived(THEMES[settingsValue.themeName]?.orp || THEMES.dark.orp);
 	const isCustomOrpColor = $derived(settingsValue.customOrpColor !== null);
-	// For "none" effect, use the text color
-	const currentOrpColor = $derived(settingsValue.customOrpColor || defaultOrpColor);
+	const isMatchingTextColor = $derived(settingsValue.customOrpColor === 'match-text');
+	// Resolve the actual color value for display
+	const currentOrpColor = $derived(
+		isMatchingTextColor ? theme.text :
+		settingsValue.customOrpColor || defaultOrpColor
+	);
 
 	// Reset data state
 	let showResetConfirm = $state(false);
@@ -225,7 +229,12 @@
 						</span>
 					</div>
 					<p class="setting-description">
-						<button class="btn-link" onclick={setOrpToTextColor}>Match text color</button> for no highlight. {isCustomOrpColor ? '' : '(Using theme default)'}
+						<button class="btn-link" onclick={setOrpToTextColor}>Match text color</button> for no highlight.
+						{#if isMatchingTextColor}
+							(Matching text color)
+						{:else if !isCustomOrpColor}
+							(Using theme default)
+						{/if}
 					</p>
 				</section>
 
