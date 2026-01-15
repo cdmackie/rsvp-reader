@@ -609,7 +609,7 @@
 		cursor: pointer;
 		border-radius: 2px;
 		padding: 0 1px;
-		transition: background-color 0.15s ease;
+		transition: background-color 0.1s ease, outline-color 0.1s ease;
 	}
 
 	.page-box :global([data-word-index]:hover) {
@@ -617,18 +617,19 @@
 	}
 
 	/* Current word highlight - bright when paused */
+	/* Use outline instead of padding changes to avoid layout shift */
 	.page-box :global([data-word-index].current) {
 		background-color: var(--orp-color);
 		color: var(--bg-color);
-		padding: 0 2px;
-		font-weight: 600;
+		outline: 2px solid var(--orp-color);
+		outline-offset: 0px;
 	}
 
 	/* Subtle highlight when actively reading - not distracting in peripheral vision */
 	.preview-container.is-playing .page-box :global([data-word-index].current) {
 		background-color: rgba(128, 128, 128, 0.15);
 		color: inherit;
-		font-weight: inherit;
+		outline: none;
 	}
 
 	/* Paragraph styling */
@@ -761,6 +762,7 @@
 		pointer-events: auto;
 		cursor: pointer;
 		border-radius: 2px;
+		transition: background-color 0.1s ease;
 	}
 
 	.pdf-text-layer :global(.pdf-word:hover) {
