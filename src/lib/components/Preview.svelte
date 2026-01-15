@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { reader, currentWordIndex, currentPage, isPlaying } from '../stores/reader';
-	import { documentStore, totalPages, getPdfDocumentCache } from '../stores/document';
+	import { documentStore, totalPages, getPdfDocumentCache, chapters } from '../stores/document';
 	import { currentTheme, settings } from '../stores/settings';
+	import type { ChapterInfo } from '../utils/epub-parser';
 	import type { ParsedEpubWithContent, ChapterContent } from '../utils/epub-parser';
 	import type { ParsedDocument } from '../utils/text-parser';
 	import type { ParsedPdf } from '../utils/pdf-parser';
@@ -16,6 +17,7 @@
 	const playing = $derived($isPlaying);
 	const pdfPreviewMode = $derived($settings.pdfPreviewMode);
 	const isPdf = $derived(doc.fileType === 'pdf');
+	const chapterList = $derived($chapters);
 
 	// Canvas ref for rendered PDF mode
 	let pdfCanvas: HTMLCanvasElement | undefined = $state();
@@ -213,6 +215,72 @@
 		return () => clearTimeout(timeout);
 	});
 
+	// Check if a URL is external (should open in new tab)
+	function isExternalUrl(href: string): boolean {
+		return /^(https?:|mailto:|tel:|ftp:|file:)/i.test(href);
+	}
+
+	// Find chapter by href (handles both full paths and fragment-only links)
+	function findChapterByHref(href: string, chapterList: ChapterInfo[]): ChapterInfo | undefined {
+		// Normalize the href for comparison
+		const normalizedHref = href.replace(/^\.\//, ''); // Remove leading ./
+
+		// Try exact match first
+		let chapter = chapterList.find(c => c.href === normalizedHref || c.href === href);
+		if (chapter) return chapter;
+
+		// Try matching just the filename (without path)
+		const hrefFilename = normalizedHref.split('/').pop() || normalizedHref;
+		chapter = chapterList.find(c => {
+			const chapterFilename = c.href.split('/').pop() || c.href;
+			return chapterFilename === hrefFilename;
+		});
+		if (chapter) return chapter;
+
+		// Try matching with fragment stripped (e.g., "chapter1.xhtml#section" -> "chapter1.xhtml")
+		const hrefWithoutFragment = normalizedHref.split('#')[0];
+		if (hrefWithoutFragment) {
+			chapter = chapterList.find(c => {
+				const chapterWithoutFragment = c.href.split('#')[0];
+				return chapterWithoutFragment === hrefWithoutFragment ||
+					chapterWithoutFragment.split('/').pop() === hrefWithoutFragment.split('/').pop();
+			});
+		}
+
+		return chapter;
+	}
+
+	// Handle anchor clicks (internal links navigate within doc, external open in new tab)
+	function handleAnchorClick(event: MouseEvent, anchor: HTMLAnchorElement): boolean {
+		const href = anchor.getAttribute('href');
+		if (!href) return false;
+
+		// External links: open in new tab
+		if (isExternalUrl(href)) {
+			event.preventDefault();
+			window.open(href, '_blank', 'noopener,noreferrer');
+			return true;
+		}
+
+		// Internal links: navigate within document
+		event.preventDefault();
+
+		// Find the matching chapter
+		const chapter = findChapterByHref(href, chapterList);
+		if (chapter) {
+			reader.setWordIndex(chapter.wordStart);
+			return true;
+		}
+
+		// If no chapter found but it's a fragment link (#something), try to find it in current content
+		if (href.startsWith('#')) {
+			// Could look for an element with matching id, but for now just ignore
+			console.log('Fragment link not found:', href);
+		}
+
+		return false;
+	}
+
 	// Handle click on words to navigate
 	function handleWordNavigation(target: HTMLElement) {
 		const wordSpan = target.closest('[data-word-index]');
@@ -226,7 +294,18 @@
 	}
 
 	function handleClick(event: MouseEvent) {
-		handleWordNavigation(event.target as HTMLElement);
+		const target = event.target as HTMLElement;
+
+		// Check if clicking on a link
+		const anchor = target.closest('a') as HTMLAnchorElement | null;
+		if (anchor) {
+			if (handleAnchorClick(event, anchor)) {
+				return; // Link was handled
+			}
+		}
+
+		// Otherwise, handle word navigation
+		handleWordNavigation(target);
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
