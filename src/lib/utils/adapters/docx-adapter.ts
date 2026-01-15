@@ -3,21 +3,38 @@
  * Uses mammoth.js to convert DOCX to HTML, then parses like HTML.
  */
 
-import type { FileAdapter, AdapterParseResult } from './types';
+import type { FileAdapter, AdapterParseResult, PreviewContent } from './types';
 import type { ParsedWord, ParsedDocument } from '../text-parser';
+import type { ChapterContent, ChapterInfo } from '../epub-parser';
 import { splitOnDashes } from '../text-parser';
 
 /**
- * Extract words from HTML, preserving formatting.
+ * Escape HTML special characters.
  */
-function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDocument {
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
+
+/**
+ * Extract words from HTML, preserving formatting and generating preview HTML.
+ */
+function extractWordsFromHtml(html: string, targetWordsPerPage = 250): {
+	document: ParsedDocument;
+	preview: PreviewContent;
+} {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(html, 'text/html');
 	const body = doc.body;
 
 	const words: ParsedWord[] = [];
-	const paragraphStarts: number[] = [];
+	const paragraphStarts: number[] = [0];
 	const pageStarts: number[] = [0];
+	const htmlParts: string[] = ['<div class="docx-content">'];
 
 	let wordIndex = 0;
 	let paragraphIndex = 0;
@@ -25,6 +42,7 @@ function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDoc
 	let currentPage = 0;
 
 	const blockTags = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'table', 'tr']);
+	const skipTags = new Set(['script', 'style', 'noscript']);
 
 	function extractFromNode(node: Node, italic: boolean, bold: boolean): void {
 		if (node.nodeType === Node.TEXT_NODE) {
@@ -40,6 +58,18 @@ function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDoc
 					italic: italic || undefined,
 					bold: bold || undefined
 				});
+
+				// Build HTML with word marker
+				let wordHtml = `<span data-word-index="${wordIndex}">${escapeHtml(word)}</span>`;
+				if (bold && italic) {
+					wordHtml = `<strong><em>${wordHtml}</em></strong>`;
+				} else if (bold) {
+					wordHtml = `<strong>${wordHtml}</strong>`;
+				} else if (italic) {
+					wordHtml = `<em>${wordHtml}</em>`;
+				}
+				htmlParts.push(wordHtml + ' ');
+
 				wordIndex++;
 				wordsOnCurrentPage++;
 			}
@@ -47,7 +77,18 @@ function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDoc
 			const el = node as Element;
 			const tagName = el.tagName.toLowerCase();
 
-			if (tagName === 'script' || tagName === 'style') {
+			if (skipTags.has(tagName)) {
+				return;
+			}
+
+			// Handle images - include them in the output HTML
+			if (tagName === 'img') {
+				const src = el.getAttribute('src');
+				const alt = el.getAttribute('alt') || '';
+				if (src) {
+					// Mark image with current word index for positioning
+					htmlParts.push(`<img src="${src}" alt="${escapeHtml(alt)}" data-word-index="${wordIndex}" style="max-width: 100%; height: auto; display: block; margin: 0.5em auto;" />`);
+				}
 				return;
 			}
 
@@ -64,16 +105,42 @@ function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDoc
 				paragraphStarts.push(wordIndex);
 			}
 
+			// Open block tag in HTML output
+			if (blockTags.has(tagName)) {
+				if (tagName.startsWith('h') && tagName.length === 2) {
+					htmlParts.push(`<${tagName}>`);
+				} else if (tagName === 'li') {
+					htmlParts.push('<li>');
+				} else if (tagName === 'blockquote') {
+					htmlParts.push('<blockquote>');
+				} else {
+					htmlParts.push('<p>');
+				}
+			}
+
 			for (const child of Array.from(node.childNodes)) {
 				extractFromNode(child, isItalic, isBold);
+			}
+
+			// Close block tag
+			if (blockTags.has(tagName)) {
+				if (tagName.startsWith('h') && tagName.length === 2) {
+					htmlParts.push(`</${tagName}>`);
+				} else if (tagName === 'li') {
+					htmlParts.push('</li>');
+				} else if (tagName === 'blockquote') {
+					htmlParts.push('</blockquote>');
+				} else {
+					htmlParts.push('</p>');
+				}
 			}
 		}
 	}
 
-	paragraphStarts.push(0);
 	extractFromNode(body, false, false);
+	htmlParts.push('</div>');
 
-	// Update pageIndex
+	// Update pageIndex for all words
 	let pageIdx = 0;
 	for (let i = 0; i < words.length; i++) {
 		if (pageIdx < pageStarts.length - 1 && i >= pageStarts[pageIdx + 1]) {
@@ -82,13 +149,37 @@ function extractWordsFromHtml(html: string, targetWordsPerPage = 250): ParsedDoc
 		words[i].pageIndex = pageIdx;
 	}
 
-	return {
+	const document: ParsedDocument = {
 		words,
 		paragraphStarts,
 		pageStarts,
 		totalWords: words.length,
 		totalParagraphs: paragraphStarts.length,
 		totalPages: pageStarts.length
+	};
+
+	// Create preview content
+	const chapterContents: ChapterContent[] = words.length > 0 ? [{
+		chapterIndex: 0,
+		htmlWithMarkers: htmlParts.join(''),
+		wordRange: [0, words.length - 1],
+		imageUrls: new Map()
+	}] : [];
+
+	const chapters: ChapterInfo[] = words.length > 0 ? [{
+		title: 'Document',
+		href: '#document'
+	}] : [];
+
+	const chapterStarts = words.length > 0 ? [0] : [];
+
+	return {
+		document,
+		preview: {
+			chapterContents,
+			chapters,
+			chapterStarts
+		}
 	};
 }
 
@@ -100,7 +191,7 @@ export const docxAdapter: FileAdapter = {
 	extensions: ['docx'],
 	mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
 	formatName: 'Microsoft Word (DOCX)',
-	supportsPreview: false,
+	supportsPreview: true,
 
 	async parse(file: File): Promise<AdapterParseResult> {
 		const warnings: string[] = [];
@@ -128,8 +219,9 @@ export const docxAdapter: FileAdapter = {
 			const title = file.name.replace(/\.docx$/i, '');
 
 			return {
-				document: parsed,
+				document: parsed.document,
 				title,
+				preview: parsed.preview,
 				warnings,
 				extra: {
 					fileType: 'docx'
