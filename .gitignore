@@ -33,11 +33,3 @@ coverage/
 
 # Playwright MCP screenshots
 .playwright-mcp/
-
-# Test files
-test-sample.txt
-
-# Test files
-*.epub
-*.pdf
-*.pdf:Zone.Identifier
